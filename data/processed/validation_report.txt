@@ -1,0 +1,14 @@
+==============================================================================
+RELATÓRIO DE VALIDAÇÃO
+==============================================================================
+
+INFORMAÇÕES:
+  - 240 linhas lidas de /home/gabriel/manet-ns3/data/raw/resultados.csv
+  - execuções: 60 (esperado 60)
+
+AVISOS (1):
+  ! 19/240 fluxos sem nenhuma recepção, por protocolo: {'DSDV': 12, 'OLSR': 7}
+
+ERROS (0):
+
+RESULTADO: APROVADO
