@@ -39,7 +39,7 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parent.parent  # raiz do projeto (manet-ns3/)
 PROTOCOLS = ["AODV", "OLSR", "DSDV"]
 SPEEDS = [1.0, 5.0, 10.0, 20.0]
-EXPECTED_RUNS = 5
+EXPECTED_RUNS = 25
 FLOWS_PER_RUN = 4
 COLORS = {"AODV": "#1f77b4", "OLSR": "#d62728", "DSDV": "#2ca02c"}
 MARKERS = {"AODV": "o", "OLSR": "s", "DSDV": "^"}

@@ -3,11 +3,12 @@ RELATÓRIO DE VALIDAÇÃO
 ==============================================================================
 
 INFORMAÇÕES:
-  - 240 linhas lidas de /home/gabriel/manet-ns3/data/raw/resultados.csv
-  - execuções: 60 (esperado 60)
+  - 1200 linhas lidas de /home/gabriel/manet-ns3/data/raw/resultados.csv
+  - execuções: 300 (esperado 300)
 
-AVISOS (1):
-  ! 19/240 fluxos sem nenhuma recepção, por protocolo: {'DSDV': 12, 'OLSR': 7}
+AVISOS (2):
+  ! 93/1200 fluxos sem nenhuma recepção, por protocolo: {'AODV': 2, 'DSDV': 55, 'OLSR': 36}
+  ! txPackets varia entre execuções: [992, 1010, 1013, 1030] (deveria ser sempre o mesmo valor, calculado a partir de warmup/guard/intervalo do pacote).
 
 ERROS (0):
 
