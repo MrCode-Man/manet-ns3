@@ -16,11 +16,11 @@
  *      confirmando que cada um foi realmente instalado nos nós antes de
  *      confiar em qualquer resultado;
  *   2) roda a matriz experimental completa: 3 protocolos x 4 velocidades
- *      x 5 repetições = 60 execuções, sem precisar editar nada nem passar
+ *      x 25 repetições = 300 execuções, sem precisar editar nada nem passar
  *      parâmetro nenhum.
  *
  * Saída: resultado_simulacao/resultados.csv, uma linha por fluxo UDP (4 por
- * execução, 240 linhas no total):
+ * execução, 1200 linhas no total):
  *   protocol,speed,run,flowId,txPackets,rxPackets,lostPackets,rxBytes,
  *   throughputMbps,pdrPct,delayMs,jitterMs
  *
@@ -29,8 +29,15 @@
  *   20 nós, área 500x500 m, Wi-Fi 802.11b em modo ad hoc (sem AP),
  *   RandomWaypointMobilityModel, tráfego UDP, 4 fluxos simultâneos,
  *   120 s de simulação, velocidades 1/5/10/20 m/s, protocolos AODV/OLSR/DSDV,
- *   5 repetições por combinação, seed mestre fixa com run variável por
+ *   25 repetições por combinação, seed mestre fixa com run variável por
  *   repetição.
+ *
+ * O número de repetições (NUM_RUNS) foi aumentado de 5 para 25: com só 5
+ * repetições, o intervalo de confiança das métricas ficou largo demais para
+ * separar os protocolos com segurança (mobilidade em MANET tem bastante
+ * variância de execução para execução, mesmo com o mesmo cenário). Com 25
+ * repetições, o erro padrão da média cai em torno de sqrt(25/5) ≈ 2,2x,
+ * estreitando o intervalo de confiança proporcionalmente.
  *
  * NOTAS DE IMPLEMENTAÇÃO (detalhes que não têm uma única resposta óbvia,
  * então ficam documentados aqui para quem for ler o código depois):
@@ -116,7 +123,7 @@ static const uint32_t MASTER_SEED = 12345; // seed usada em todas as execuções
 
 static const std::vector<std::string> PROTOCOLS = {"aodv", "olsr", "dsdv"}; // protocolos comparados
 static const std::vector<double>      SPEEDS    = {1.0, 5.0, 10.0, 20.0};   // velocidades testadas (m/s)
-static const uint32_t                 NUM_RUNS  = 5; // repetições independentes por combinação
+static const uint32_t                 NUM_RUNS  = 25; // repetições independentes por combinação
 
 // ---- Parâmetros auxiliares do cenário (ver "Notas de implementação" acima) ----
 static const double      PAUSE_S       = 1.0;    // tempo parado em cada waypoint do RandomWaypoint
@@ -295,7 +302,7 @@ ValidarProtocolo (const std::string &protocol)
   bool ok = true;
 
   // Cenário pequeno, só para checagem — run=9999 para nunca colidir com os
-  // runs 1..5 usados nos experimentos de verdade.
+  // runs 1..NUM_RUNS usados nos experimentos de verdade.
   Cenario c = MontarCenario (protocol, /*speed*/ 5.0, /*run*/ 9999);
 
   auto Check = [&ok] (bool cond, const std::string &msg) {

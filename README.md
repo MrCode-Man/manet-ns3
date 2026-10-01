@@ -8,7 +8,7 @@ Trabalho Final de Redes Móveis (IFG, Câmpus Inhumas, 2026/2). Investiga como a
 
 | Camada | Arquivo | Faz |
 |---|---|---|
-| C++ / ns-3 | `src/manet-routing.cc` | monta o cenário, valida os 3 protocolos, roda as 60 execuções, calcula as métricas por fluxo e grava o CSV bruto |
+| C++ / ns-3 | `src/manet-routing.cc` | monta o cenário, valida os 3 protocolos, roda as execuções, calcula as métricas por fluxo e grava o CSV bruto |
 | Bash | `scripts/run_batch.sh` | copia o `.cc` para o ns-3, compila, roda, e traz o CSV de volta para este projeto |
 | Python | `scripts/analyze.py` | lê o CSV, valida, agrega os 4 fluxos por execução, calcula média/desvio/IC 95% e gera as tabelas e os 4 gráficos obrigatórios |
 

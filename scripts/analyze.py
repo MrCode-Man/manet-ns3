@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 analyze.py - análise do resultados.csv gerado pelo ns-3 (scratch/manet-routing.cc)
 
