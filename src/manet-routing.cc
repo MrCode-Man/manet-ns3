@@ -1,8 +1,8 @@
 /*
  * manet-routing.cc
  * ---------------------------------------------------------------------------
- * Trabalho Final — Redes Móveis (IFG, Câmpus Inhumas, 2026/2)
- * Comparação AODV x OLSR x DSDV em MANET, sob 4 níveis de mobilidade.
+ * Comparação AODV x OLSR x DSDV em uma MANET (802.11b ad hoc, UDP), sob
+ * diferentes velocidades de mobilidade.
  *
  * COMO RODAR (sem nenhum argumento — tudo já está definido no código):
  *
@@ -11,64 +11,71 @@
  *     ./ns3 build
  *     ./ns3 run scratch/manet-routing
  *
- * (o script scripts/run_batch.sh faz esses 4 passos automaticamente e ainda
- * copia o resultado de volta para data/raw/ deste projeto — ver README.md)
- *
  * O programa, sozinho:
- *   1) roda uma checagem rápida de cada protocolo (AODV, OLSR, DSDV) e
- *      imprime um checklist de validação (slide 16: "confirme se cada
- *      protocolo está realmente instalado");
- *   2) roda a matriz experimental completa — 3 protocolos x 4 velocidades
- *      x 5 repetições = 60 execuções (slide 21) — sem precisar editar nada
- *      nem passar parâmetro nenhum.
+ *   1) roda uma checagem rápida de cada protocolo (AODV, OLSR, DSDV),
+ *      confirmando que cada um foi realmente instalado nos nós antes de
+ *      confiar em qualquer resultado;
+ *   2) roda a matriz experimental completa: 3 protocolos x 4 velocidades
+ *      x 5 repetições = 60 execuções, sem precisar editar nada nem passar
+ *      parâmetro nenhum.
  *
- * Saída: resultado_simulacao/resultados.csv, UMA LINHA POR FLUXO (4 por
- * execução, 240 linhas no total), exatamente nas colunas recomendadas pelo
- * slide 24:
+ * Saída: resultado_simulacao/resultados.csv, uma linha por fluxo UDP (4 por
+ * execução, 240 linhas no total):
  *   protocol,speed,run,flowId,txPackets,rxPackets,lostPackets,rxBytes,
  *   throughputMbps,pdrPct,delayMs,jitterMs
  *
  * ---------------------------------------------------------------------------
- * O QUE O ENUNCIADO (slides) DEFINE, E ONDE:
- *   20 nós, área 500x500 m, 802.11 Ad Hoc, RandomWaypointMobilityModel,
- *   UDP, 4 fluxos simultâneos, 120 s de simulação, velocidades 1/5/10/20 m/s,
- *   AODV/OLSR/DSDV, mínimo 5 repetições, seed mestre fixa + run variável
- *   (slide 9 e 22). Isso está todo fixado nas constantes abaixo.
+ * CENÁRIO FIXO (ver constantes logo abaixo):
+ *   20 nós, área 500x500 m, Wi-Fi 802.11b em modo ad hoc (sem AP),
+ *   RandomWaypointMobilityModel, tráfego UDP, 4 fluxos simultâneos,
+ *   120 s de simulação, velocidades 1/5/10/20 m/s, protocolos AODV/OLSR/DSDV,
+ *   5 repetições por combinação, seed mestre fixa com run variável por
+ *   repetição.
  *
- * O QUE O ENUNCIADO NÃO ESPECIFICA (decisão do grupo, documentada aqui):
- *   - Taxa PHY 802.11b: DsssRate11Mbps, para dados, controle E broadcast
- *     (NonUnicastMode). Sem igualar o broadcast à taxa dos dados, o HELLO/TC/
- *     updates dos protocolos viajam numa taxa mais baixa (logo com alcance
- *     maior) que os pacotes de dados — o protocolo "acha" que tem rota para
- *     um vizinho que na prática não recebe o dado. É o próprio exemplo
- *     oficial do ns-3 (examples/routing/manet-routing-compare.cc) que faz
- *     essa igualação.
- *   - Propagação: FriisPropagationLossModel em 2,412 GHz. O valor padrão do
- *     Friis no ns-3 assume 5,15 GHz, o que é incoerente com 802.11b (2,4 GHz)
- *     e reduz artificialmente o alcance do rádio.
- *   - Potência de Tx: 7,5 dBm (mesmo valor do exemplo oficial do ns-3).
- *   - Velocidade no RandomWaypoint: TODOS os nós se movem à mesma velocidade
- *     constante --speed-- (ConstantRandomVariable), igual para todas as
- *     execuções da mesma linha da matriz.
- *   - Pause time: 1,0 s, constante em todas as execuções.
- *   - Distribuição inicial: uniforme na área (RandomRectanglePositionAllocator).
- *   - Streams aleatórios da mobilidade fixados (AssignStreams): para o mesmo
- *     "run", a topologia inicial e o movimento são IDÊNTICOS nos 3
- *     protocolos — a diferença nos resultados vem só do protocolo, não de
- *     "sorte" de topologia.
- *   - Fluxos UDP: fluxo i = nó i -> nó (19-i), porta 9+i, pacote de 1024
- *     bytes a cada 0,1 s (mesmos valores do código original do grupo).
- *   - Início do tráfego (warm-up): 15 s. É o tempo de um ciclo completo de
- *     atualização periódica do DSDV (15 s, ver Model Library) e várias
- *     rodadas de HELLO/TC do OLSR (2 s / 5 s); antes disso as tabelas de
- *     roteamento ainda não convergiram. O tempo TOTAL de simulação continua
- *     os 120 s exigidos pelo enunciado — o warm-up só define QUANDO, dentro
- *     desses 120 s, o tráfego de dados começa.
- *   - Fim do tráfego: 2 s antes do fim (118 s), para dar tempo de pacotes já
- *     enviados chegarem antes da simulação acabar.
- *   - Duração útil do throughput (slide 20 pede para documentar a escolha):
- *     timeLastRxPacket - timeFirstTxPacket, DO PRÓPRIO FLUXO. Se o fluxo não
- *     recebeu nenhum pacote, throughput = 0.
+ * NOTAS DE IMPLEMENTAÇÃO (detalhes que não têm uma única resposta óbvia,
+ * então ficam documentados aqui para quem for ler o código depois):
+ *
+ *   - Taxa PHY 802.11b (DsssRate11Mbps) é usada para dados, controle E
+ *     broadcast (NonUnicastMode). Se o broadcast ficasse na taxa básica
+ *     padrão — mais baixa, logo com alcance maior que a dos dados — HELLO,
+ *     TC e updates de roteamento alcançariam vizinhos que, na prática, não
+ *     conseguem receber o tráfego de dados na taxa configurada. O resultado
+ *     seria rota "visível" na tabela que não entrega pacote de verdade.
+ *
+ *   - A propagação usa FriisPropagationLossModel configurado para 2,412 GHz
+ *     (canal 1 do 802.11b/2,4 GHz) em vez do padrão do ns-3 para esse
+ *     modelo, que assume 5,15 GHz. Sem essa correção, o alcance do rádio sai
+ *     menor do que o fisicamente esperado para 802.11b.
+ *
+ *   - Potência de transmissão fixa em 7,5 dBm, igual em todas as execuções.
+ *
+ *   - No RandomWaypoint, todos os nós se movem à mesma velocidade constante
+ *     (um valor por rodada da matriz, não uma faixa aleatória), com pause
+ *     time de 1,0 s e distribuição inicial uniforme na área.
+ *
+ *   - Os streams de números aleatórios da mobilidade são fixados
+ *     explicitamente (AssignStreams). Isso garante que, para o mesmo número
+ *     de run, a topologia inicial e o movimento dos nós sejam idênticos nos
+ *     três protocolos — qualquer diferença nos resultados vem do protocolo
+ *     em si, não de uma topologia sorteada diferente por acaso.
+ *
+ *   - Os 4 fluxos UDP são fixos e determinísticos: fluxo i liga o nó i ao
+ *     nó (19-i), na porta 9+i, com pacotes de 1024 bytes a cada 0,1 s.
+ *
+ *   - O tráfego de dados só começa em 15 s de simulação (não em t=0), para
+ *     dar tempo dos protocolos convergirem antes de medir qualquer coisa:
+ *     o DSDV tem um ciclo de atualização periódica de 15 s, e o OLSR usa
+ *     HELLO a cada 2 s e TC a cada 5 s — antes disso as tabelas de
+ *     roteamento ainda não estabilizaram. O tempo total de simulação
+ *     continua sendo 120 s; esse atraso só define QUANDO, dentro desses
+ *     120 s, o tráfego de dados começa.
+ *
+ *   - O tráfego para 2 s antes do fim da simulação (em 118 s), dando tempo
+ *     de pacotes já enviados chegarem antes do FlowMonitor parar de contar.
+ *
+ *   - Duração útil usada no cálculo de throughput: timeLastRxPacket menos
+ *     timeFirstTxPacket, calculada por fluxo. Se o fluxo não recebeu nenhum
+ *     pacote, o throughput desse fluxo é 0.
  * ---------------------------------------------------------------------------
  */
 
@@ -87,6 +94,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -96,40 +104,41 @@ using namespace ns3;
 NS_LOG_COMPONENT_DEFINE ("ManetRoutingCompare");
 
 // =============================================================================
-// 1. TUDO que o enunciado fixa (slide 9) + as decisões do grupo (ver acima).
-//    Nada disso é lido de linha de comando: é exatamente o que vai rodar.
+//                              CONSTANTES
 // =============================================================================
-static const uint32_t    NUM_NODES   = 20;      // slide 9
-static const double      AREA_M      = 500.0;   // slide 9 (área 500 x 500 m)
-static const double      SIM_TIME_S  = 120.0;   // slide 9 (tempo de simulação)
-static const uint32_t    NUM_FLOWS   = 4;        // slide 9 (fluxos simultâneos)
-static const uint32_t    MASTER_SEED = 12345;    // slide 22 (seed mestre fixa)
 
-static const std::vector<std::string> PROTOCOLS = {"aodv", "olsr", "dsdv"};      // slide 9/21
-static const std::vector<double>      SPEEDS    = {1.0, 5.0, 10.0, 20.0};        // slide 9/21
-static const uint32_t                 NUM_RUNS  = 5;                             // slide 9/21 (mínimo 5)
+// ---- Cenário experimental ----
+static const uint32_t NUM_NODES   = 20;    // número de nós da rede
+static const double   AREA_M      = 500.0; // lado da área quadrada, em metros
+static const double   SIM_TIME_S  = 120.0; // tempo total de simulação, em segundos
+static const uint32_t NUM_FLOWS   = 4;     // fluxos UDP simultâneos
+static const uint32_t MASTER_SEED = 12345; // seed usada em todas as execuções
 
-// ---- Decisões do grupo (não exigidas pelo enunciado; ver comentário no topo) ----
-static const double      PAUSE_S       = 1.0;
-static const double      WARMUP_S      = 15.0;               // início do tráfego
-static const double      GUARD_S       = 2.0;                // tráfego termina em SIM_TIME_S - GUARD_S
-static const double      PKT_INTERVAL  = 0.1;                 // s entre pacotes (igual ao código original)
-static const uint32_t    PKT_SIZE      = 1024;                // bytes (igual ao código original)
-static const uint16_t    BASE_PORT     = 9;
-static const double      TX_POWER_DBM  = 7.5;                 // exemplo oficial ns-3
-static const double      CARRIER_HZ    = 2.412e9;              // canal 1, 2,4 GHz (802.11b)
-static const std::string PHY_MODE      = "DsssRate11Mbps";
+static const std::vector<std::string> PROTOCOLS = {"aodv", "olsr", "dsdv"}; // protocolos comparados
+static const std::vector<double>      SPEEDS    = {1.0, 5.0, 10.0, 20.0};   // velocidades testadas (m/s)
+static const uint32_t                 NUM_RUNS  = 5; // repetições independentes por combinação
+
+// ---- Parâmetros auxiliares do cenário (ver "Notas de implementação" acima) ----
+static const double      PAUSE_S       = 1.0;    // tempo parado em cada waypoint do RandomWaypoint
+static const double      WARMUP_S      = 15.0;   // instante em que o tráfego de dados começa
+static const double      GUARD_S       = 2.0;    // tráfego termina em SIM_TIME_S - GUARD_S
+static const double      PKT_INTERVAL  = 0.1;    // intervalo entre pacotes, em segundos
+static const uint32_t    PKT_SIZE      = 1024;   // tamanho do pacote UDP, em bytes
+static const uint16_t    BASE_PORT     = 9;      // porta do fluxo 0; fluxo i usa a porta BASE_PORT+i
+static const double      TX_POWER_DBM  = 7.5;    // potência de transmissão, em dBm
+static const double      CARRIER_HZ    = 2.412e9; // frequência de portadora (canal 1, 2,4 GHz)
+static const std::string PHY_MODE      = "DsssRate11Mbps"; // taxa 802.11b usada por dados e controle
 
 static const std::string OUT_DIR  = "resultado_simulacao";
 static const std::string OUT_CSV  = OUT_DIR + "/resultados.csv";
 
 // =============================================================================
-// 2. Utilidades
+// Funções auxiliares
 // =============================================================================
 
-// Nome do protocolo de roteamento efetivamente instalado no nó (para a
-// validação do slide 16: "confirme se cada protocolo está realmente
-// instalado").
+// Retorna o nome (TypeId) do protocolo de roteamento efetivamente instalado
+// no nó. Usado só para confirmar, antes de rodar qualquer experimento, que o
+// protocolo pedido foi mesmo o que acabou instalado.
 static std::string
 RoutingProtocolName (Ptr<Node> node)
 {
@@ -147,6 +156,8 @@ RoutingProtocolName (Ptr<Node> node)
   return list->GetRoutingProtocol (0, priority)->GetInstanceTypeId ().GetName ();
 }
 
+// Nome do TypeId que cada string de protocolo deveria produzir uma vez
+// instalada (usado para comparar com o retorno de RoutingProtocolName).
 static std::string
 ExpectedTypeId (const std::string &protocol)
 {
@@ -156,9 +167,9 @@ ExpectedTypeId (const std::string &protocol)
 }
 
 // =============================================================================
-// 3. Monta o cenário-base (comum à validação e às execuções da matriz).
-//    Devolve os nós, os dispositivos e as interfaces já com IP, com o
-//    protocolo de roteamento (aodv/olsr/dsdv) e a mobilidade instalados.
+// Monta o cenário de rede (Wi-Fi + roteamento + mobilidade), compartilhado
+// pela checagem de validação e pelas execuções da matriz experimental.
+// Devolve os nós, os dispositivos de rede e as interfaces já com IP.
 // =============================================================================
 struct Cenario
 {
@@ -170,17 +181,21 @@ struct Cenario
 static Cenario
 MontarCenario (const std::string &protocol, double speed, uint32_t run)
 {
-  // ---- Aleatoriedade: seed mestre fixa + run variável (slide 22) ----
+  // Seed fixa + número de run: isso é o que torna cada repetição
+  // independente (uma sequência de números aleatórios diferente por run) e,
+  // ao mesmo tempo, inteiramente reproduzível (repetir o mesmo run dá
+  // sempre o mesmo resultado).
   RngSeedManager::SetSeed (MASTER_SEED);
   RngSeedManager::SetRun (run);
 
-  // Broadcast (HELLO/TC/updates) na MESMA taxa dos dados — ver decisão no topo.
+  // Iguala a taxa do tráfego broadcast (HELLO/TC/updates dos protocolos de
+  // roteamento) à taxa dos dados — ver "Notas de implementação" no topo.
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", StringValue (PHY_MODE));
 
   Cenario c;
   c.nodes.Create (NUM_NODES);
 
-  // ---- Wi-Fi 802.11b Ad Hoc (slide 6) ----
+  // ---- Wi-Fi 802.11b em modo ad hoc (sem access point) ----
   WifiHelper wifi;
   wifi.SetStandard (WIFI_STANDARD_80211b);
   wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager",
@@ -190,6 +205,8 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run)
   YansWifiPhyHelper wifiPhy;
   YansWifiChannelHelper wifiChannel;
   wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
+  // Frequência de portadora corrigida para 2,4 GHz (ver nota no topo sobre
+  // o padrão do FriisPropagationLossModel assumir 5,15 GHz).
   wifiChannel.AddPropagationLoss ("ns3::FriisPropagationLossModel",
                                   "Frequency", DoubleValue (CARRIER_HZ));
   wifiPhy.SetChannel (wifiChannel.Create ());
@@ -197,10 +214,10 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run)
   wifiPhy.Set ("TxPowerEnd", DoubleValue (TX_POWER_DBM));
 
   WifiMacHelper wifiMac;
-  wifiMac.SetType ("ns3::AdhocWifiMac"); // Ad Hoc, sem AP (slide 6)
+  wifiMac.SetType ("ns3::AdhocWifiMac");
   c.devices = wifi.Install (wifiPhy, wifiMac, c.nodes);
 
-  // ---- Roteamento: escolhe AODV, OLSR ou DSDV (slide 16) ----
+  // ---- Protocolo de roteamento: AODV, OLSR ou DSDV ----
   AodvHelper aodv;
   OlsrHelper olsr;
   DsdvHelper dsdv;
@@ -255,16 +272,21 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run)
                              "Pause", StringValue (pauseRv.str ()),
                              "PositionAllocator", PointerValue (posAlloc));
   mobility.Install (c.nodes);
+  // Fixar os streams aqui garante que, para o mesmo "run", a topologia
+  // inicial e o movimento sejam idênticos nos três protocolos — qualquer
+  // diferença de resultado vem do protocolo, não de uma topologia diferente
+  // por acaso.
   streamIndex += mobility.AssignStreams (c.nodes, streamIndex);
 
   return c;
 }
 
 // =============================================================================
-// 4. Validação rápida (slide 16): roda um cenário pequeno para cada
-//    protocolo e confirma nós, mobilidade, Wi-Fi Ad Hoc e protocolo
-//    realmente instalados. NÃO grava no CSV de resultados — é só um
-//    checklist impresso no console, chamado automaticamente antes do lote.
+// Validação rápida: monta um cenário pequeno para um protocolo e confirma
+// que os nós foram criados, a mobilidade e o Wi-Fi ad hoc estão configurados
+// e o protocolo de roteamento realmente instalado é o esperado. Não grava
+// nada no CSV de resultados — é só um checklist impresso no console, usado
+// como sanidade antes de confiar na matriz experimental completa.
 // =============================================================================
 static bool
 ValidarProtocolo (const std::string &protocol)
@@ -272,8 +294,8 @@ ValidarProtocolo (const std::string &protocol)
   std::cout << "\n---- Validando " << protocol << " ----" << std::endl;
   bool ok = true;
 
-  // Cenário pequeno e rápido, só para checagem (não usa as constantes do
-  // experimento-base; run=9999 para nunca colidir com os runs 1..5 reais).
+  // Cenário pequeno, só para checagem — run=9999 para nunca colidir com os
+  // runs 1..5 usados nos experimentos de verdade.
   Cenario c = MontarCenario (protocol, /*speed*/ 5.0, /*run*/ 9999);
 
   auto Check = [&ok] (bool cond, const std::string &msg) {
@@ -290,7 +312,7 @@ ValidarProtocolo (const std::string &protocol)
       Ptr<WifiNetDevice> wd = DynamicCast<WifiNetDevice> (c.devices.Get (i));
       allAdhoc = allAdhoc && wd && wd->GetMac ()->GetInstanceTypeId ().GetName () == "ns3::AdhocWifiMac";
     }
-  Check (allAdhoc, "Wi-Fi 802.11b em modo Ad Hoc (AdhocWifiMac, sem AP) em todos os nos");
+  Check (allAdhoc, "Wi-Fi 802.11b em modo ad hoc (AdhocWifiMac, sem AP) em todos os nos");
 
   bool allRwp = true;
   for (uint32_t i = 0; i < c.nodes.GetN (); ++i)
@@ -316,19 +338,19 @@ ValidarProtocolo (const std::string &protocol)
 }
 
 // =============================================================================
-// 5. Uma execução completa da matriz (protocolo x velocidade x run):
-//    monta o cenário, cria os 4 fluxos UDP, roda o FlowMonitor e grava
-//    1 linha por fluxo no CSV, exatamente nas colunas do slide 24.
+// Roda uma execução completa (um protocolo, uma velocidade, um run): monta
+// o cenário, cria os 4 fluxos UDP, roda o FlowMonitor e grava uma linha por
+// fluxo no CSV de resultados.
 // =============================================================================
 static void
 RunExperiment (const std::string &protocol, double speed, uint32_t run)
 {
   Cenario c = MontarCenario (protocol, speed, run);
 
-  const double trafficStop = SIM_TIME_S - GUARD_S; // 118 s
+  const double trafficStop = SIM_TIME_S - GUARD_S; // tráfego termina em 118 s
 
   // ---- Tráfego UDP: 4 fluxos simultâneos e determinísticos ----
-  // fluxo i: no i -> no (NUM_NODES-1-i), porta BASE_PORT+i
+  // fluxo i liga o nó i ao nó (NUM_NODES-1-i), na porta BASE_PORT+i.
   for (uint32_t i = 0; i < NUM_FLOWS; ++i)
     {
       uint32_t senderId = i;
@@ -346,15 +368,15 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
       client.SetAttribute ("PacketSize", UintegerValue (PKT_SIZE));
 
       ApplicationContainer clientApp = client.Install (c.nodes.Get (senderId));
-      clientApp.Start (Seconds (WARMUP_S));   // tráfego começa após o aquecimento
-      clientApp.Stop (Seconds (trafficStop)); // termina com folga antes do fim da simulacao
+      clientApp.Start (Seconds (WARMUP_S));   // tráfego começa só depois do tempo de convergência
+      clientApp.Stop (Seconds (trafficStop)); // termina com folga antes do fim da simulação
     }
 
-  // ---- FlowMonitor (slide 7/19) ----
+  // ---- Medição de tráfego com o FlowMonitor ----
   FlowMonitorHelper flowmon;
   Ptr<FlowMonitor> monitor = flowmon.InstallAll ();
 
-  Simulator::Stop (Seconds (SIM_TIME_S)); // tempo TOTAL de simulacao = 120 s (slide 9)
+  Simulator::Stop (Seconds (SIM_TIME_S));
   Simulator::Run ();
 
   monitor->CheckForLostPackets ();
@@ -366,8 +388,10 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
 
   uint32_t somaTx = 0, somaRx = 0;
 
-  // Uma linha por fluxo de DADOS (identificado pela origem/destino/porta;
-  // ignora o trafego de controle dos proprios protocolos de roteamento).
+  // Uma linha por fluxo de dados, identificado pela combinação de origem,
+  // destino e porta — isso separa os 4 fluxos de tráfego do tráfego de
+  // controle gerado pelo próprio protocolo de roteamento, que também
+  // aparece nas estatísticas do FlowMonitor mas não deve entrar no CSV.
   for (uint32_t i = 0; i < NUM_FLOWS; ++i)
     {
       Ipv4Address src = c.interfaces.GetAddress (i);
@@ -399,17 +423,18 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
             }
         }
 
-      // ---- Metricas obrigatorias (formulas do slide 20) ----
+      // PDR: percentual de pacotes transmitidos que chegaram ao destino.
       double pdrPct = (tx > 0) ? (100.0 * rx / tx) : 0.0;
+      // Atraso médio fim a fim, em milissegundos.
       double delayMs = (rx > 0) ? (1000.0 * delaySum.GetSeconds () / rx) : 0.0;
+      // Jitter médio (variação do atraso entre pacotes consecutivos), em ms.
       double jitterMs = (rx > 1) ? (1000.0 * jitterSum.GetSeconds () / (rx - 1)) : 0.0;
 
-      // Duracao util = timeLastRxPacket - timeFirstTxPacket DO FLUXO (decisao
-      // documentada no topo do arquivo).
+      // Duração útil = intervalo entre o primeiro pacote enviado e o
+      // último recebido, nesse fluxo. Se não houve recepção, throughput = 0.
       double duration = (rx > 0 && tLastRx > tFirstTx) ? (tLastRx - tFirstTx).GetSeconds () : 0.0;
       double throughputMbps = (duration > 0) ? (rxBytes * 8.0) / duration / 1e6 : 0.0;
 
-      // Colunas exatamente na ordem recomendada pelo slide 24:
       csv << protocol << "," << speed << "," << run << "," << flowId << "," << tx << "," << rx
           << "," << lost << "," << rxBytes << "," << throughputMbps << "," << pdrPct << ","
           << delayMs << "," << jitterMs << "\n";
@@ -427,24 +452,24 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
 }
 
 // =============================================================================
-// 6. main(): roda TUDO sozinho, sem nenhum argumento.
+// main(): roda tudo sozinho, sem nenhum argumento de linha de comando.
 // =============================================================================
 int
 main (int argc, char *argv[])
 {
-  CommandLine cmd (__FILE__); // sem opcoes: nada e' passado pelo usuario
+  CommandLine cmd (__FILE__); // nenhuma opção registrada: nada é lido do usuário
   cmd.Parse (argc, argv);
 
   std::filesystem::create_directories (OUT_DIR);
 
-  // ---- 1) Validacao rapida de cada protocolo (slide 16) ----
+  // ---- Etapa 1: valida rapidamente cada protocolo antes de confiar nele ----
   std::cout << "===================================================" << std::endl;
   std::cout << " ETAPA 1/2: validando AODV, OLSR e DSDV" << std::endl;
   std::cout << "===================================================" << std::endl;
   bool todasOk = true;
   for (const std::string &p : PROTOCOLS)
     {
-      todasOk &= ValidarProtocolo (p);
+      todasOk = todasOk && ValidarProtocolo (p);
     }
   if (!todasOk)
     {
@@ -456,15 +481,15 @@ main (int argc, char *argv[])
       std::cout << "\nTodos os protocolos validados com sucesso." << std::endl;
     }
 
-  // ---- 2) Matriz experimental completa: 3 x 4 x 5 = 60 execucoes ----
+  // ---- Etapa 2: matriz experimental completa (protocolos x velocidades x runs) ----
   std::cout << "\n===================================================" << std::endl;
   std::cout << " ETAPA 2/2: matriz experimental (" << PROTOCOLS.size () << " protocolos x "
             << SPEEDS.size () << " velocidades x " << NUM_RUNS << " runs = "
             << PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS << " execucoes)" << std::endl;
   std::cout << "===================================================" << std::endl;
 
-  // CSV unico com todos os resultados; cabecalho escrito uma vez (trunca
-  // qualquer resultado de uma execucao anterior).
+  // CSV único com todos os resultados; cabeçalho escrito uma vez, truncando
+  // qualquer resultado de uma execução anterior do programa.
   {
     std::ofstream csv (OUT_CSV, std::ios::trunc);
     csv << "protocol,speed,run,flowId,txPackets,rxPackets,lostPackets,rxBytes,"
@@ -472,7 +497,8 @@ main (int argc, char *argv[])
   }
 
   uint32_t execucao = 0;
-  const uint32_t total = PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS;
+  const uint32_t total =
+      static_cast<uint32_t> (PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS);
   for (const std::string &p : PROTOCOLS)
     {
       for (double s : SPEEDS)
