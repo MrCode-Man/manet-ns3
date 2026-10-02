@@ -15,22 +15,39 @@
  *   1) roda uma checagem rápida de cada protocolo (AODV, OLSR, DSDV),
  *      confirmando que cada um foi realmente instalado nos nós antes de
  *      confiar em qualquer resultado;
- *   2) roda a matriz experimental completa: 3 protocolos x 4 velocidades
- *      x 25 repetições = 300 execuções, sem precisar editar nada nem passar
- *      parâmetro nenhum.
+ *   2) roda a matriz experimental-base completa: 3 protocolos x 4 velocidades
+ *      x 25 repetições = 300 execuções, a 20 nós;
+ *   3) roda a mesma matriz de novo (300 execuções), agora a 10 nós — a
+ *      variável experimental de extensão pedida pelo enunciado (ver
+ *      "Extensão", README Seção 7). 600 execuções no total, sem precisar
+ *      editar nada nem passar parâmetro nenhum.
  *
- * Saída: resultado_simulacao/resultados.csv, uma linha por fluxo UDP (4 por
- * execução, 1200 linhas no total):
+ * Saída: um CSV por estágio, cada um com uma linha por fluxo UDP (4 por
+ * execução, 1200 linhas no total por estágio):
+ *   resultado_simulacao/resultados_20n.csv  (matriz-base, 20 nós)
+ *   resultado_simulacao/resultados_10n.csv  (extensão, 10 nós)
+ * Colunas (iguais nos dois arquivos — o número de nós fica implícito no
+ * nome do arquivo, não é uma coluna):
  *   protocol,speed,run,flowId,txPackets,rxPackets,lostPackets,rxBytes,
  *   throughputMbps,pdrPct,delayMs,jitterMs
  *
+ * Além dos CSVs, o programa também grava:
+ *   - resultado_simulacao/flowmon/flowmon_<protocolo>_speed<velocidade>_<tag>.xml
+ *     — XML bruto do FlowMonitor (SerializeToXmlFile), uma amostra de 12
+ *     arquivos por estágio (<tag> = 20n ou 10n; run=1 de cada uma das 12
+ *     combinações protocolo x velocidade; não as 300 execuções de cada
+ *     estágio, por tamanho/tempo) — 24 arquivos no total.
+ *   - resultado_simulacao/log.txt — cópia em arquivo de tudo que aparece no
+ *     console (validação dos protocolos, progresso de cada estágio, resumo
+ *     de cada execução), via um std::streambuf que "espelha" o std::cout.
+ *
  * ---------------------------------------------------------------------------
  * CENÁRIO FIXO (ver constantes logo abaixo):
- *   20 nós, área 500x500 m, Wi-Fi 802.11b em modo ad hoc (sem AP),
- *   RandomWaypointMobilityModel, tráfego UDP, 4 fluxos simultâneos,
- *   120 s de simulação, velocidades 1/5/10/20 m/s, protocolos AODV/OLSR/DSDV,
- *   25 repetições por combinação, seed mestre fixa com run variável por
- *   repetição.
+ *   20 nós na matriz-base / 10 nós na extensão, área 500x500 m, Wi-Fi 802.11b
+ *   em modo ad hoc (sem AP), RandomWaypointMobilityModel, tráfego UDP,
+ *   4 fluxos simultâneos, 120 s de simulação, velocidades 1/5/10/20 m/s,
+ *   protocolos AODV/OLSR/DSDV, 25 repetições por combinação, seed mestre
+ *   fixa com run variável por repetição.
  *
  * O número de repetições (NUM_RUNS) foi aumentado de 5 para 25: com só 5
  * repetições, o intervalo de confiança das métricas ficou largo demais para
@@ -67,7 +84,8 @@
  *     em si, não de uma topologia sorteada diferente por acaso.
  *
  *   - Os 4 fluxos UDP são fixos e determinísticos: fluxo i liga o nó i ao
- *     nó (19-i), na porta 9+i, com pacotes de 1024 bytes a cada 0,1 s.
+ *     nó (nodes-1-i) — nó 19-i na matriz-base (20 nós), nó 9-i na extensão
+ *     (10 nós) —, na porta 9+i, com pacotes de 1024 bytes a cada 0,1 s.
  *
  *   - O tráfego de dados só começa em 15 s de simulação (não em t=0), para
  *     dar tempo dos protocolos convergirem antes de medir qualquer coisa:
@@ -103,6 +121,7 @@
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <streambuf>
 #include <string>
 #include <vector>
 
@@ -115,7 +134,8 @@ NS_LOG_COMPONENT_DEFINE ("ManetRoutingCompare");
 // =============================================================================
 
 // ---- Cenário experimental ----
-static const uint32_t NUM_NODES   = 20;    // número de nós da rede
+static const uint32_t NODES_BASE  = 20;    // número de nós da matriz-base
+static const uint32_t NODES_EXT   = 10;    // número de nós da extensão (variável própria do grupo)
 static const double   AREA_M      = 500.0; // lado da área quadrada, em metros
 static const double   SIM_TIME_S  = 120.0; // tempo total de simulação, em segundos
 static const uint32_t NUM_FLOWS   = 4;     // fluxos UDP simultâneos
@@ -136,8 +156,64 @@ static const double      TX_POWER_DBM  = 7.5;    // potência de transmissão, e
 static const double      CARRIER_HZ    = 2.412e9; // frequência de portadora (canal 1, 2,4 GHz)
 static const std::string PHY_MODE      = "DsssRate11Mbps"; // taxa 802.11b usada por dados e controle
 
-static const std::string OUT_DIR  = "resultado_simulacao";
-static const std::string OUT_CSV  = OUT_DIR + "/resultados.csv";
+static const std::string OUT_DIR          = "resultado_simulacao";
+static const std::string OUT_CSV_20N      = OUT_DIR + "/resultados_20n.csv";
+static const std::string OUT_CSV_10N      = OUT_DIR + "/resultados_10n.csv";
+static const std::string OUT_LOG          = OUT_DIR + "/log.txt";
+static const std::string OUT_FLOWMON_DIR  = OUT_DIR + "/flowmon";
+
+// ---- Estágios da matriz experimental: base (20 nós) + extensão (10 nós) ----
+// Cada estágio roda a mesma matriz 3 protocolos x 4 velocidades x 25 runs,
+// só mudando o número de nós, o CSV de destino e a tag usada no nome dos
+// arquivos de XML do FlowMonitor.
+struct Stage
+{
+  uint32_t    nodes;
+  std::string csvPath;
+  std::string tag;   // usado no nome dos arquivos de XML (flowmon_..._<tag>.xml)
+  std::string label; // usado nas mensagens de progresso
+};
+
+static const std::vector<Stage> STAGES = {
+  {NODES_BASE, OUT_CSV_20N, "20n", "matriz-base (20 nos)"},
+  {NODES_EXT,  OUT_CSV_10N, "10n", "extensao (10 nos)"},
+};
+
+// =============================================================================
+// Log em arquivo: um std::streambuf que duplica tudo que é escrito em
+// std::cout também para um std::ofstream, instalado uma única vez em main().
+// Isso captura automaticamente a validação, o progresso [n/300] e o resumo
+// de cada execução em resultado_simulacao/log.txt, sem precisar reescrever
+// nenhum dos "std::cout << ..." já existentes em ValidarProtocolo/
+// RunExperiment/main.
+// =============================================================================
+class TeeBuf : public std::streambuf
+{
+public:
+  TeeBuf (std::streambuf *console, std::streambuf *file) : console_ (console), file_ (file) {}
+
+protected:
+  int
+  overflow (int c) override
+  {
+    if (c == EOF) return !EOF;
+    int r1 = console_->sputc (static_cast<char> (c));
+    int r2 = file_->sputc (static_cast<char> (c));
+    return (r1 == EOF || r2 == EOF) ? EOF : c;
+  }
+
+  int
+  sync () override
+  {
+    int r1 = console_->pubsync ();
+    int r2 = file_->pubsync ();
+    return (r1 == 0 && r2 == 0) ? 0 : -1;
+  }
+
+private:
+  std::streambuf *console_;
+  std::streambuf *file_;
+};
 
 // =============================================================================
 // Funções auxiliares
@@ -186,7 +262,7 @@ struct Cenario
 };
 
 static Cenario
-MontarCenario (const std::string &protocol, double speed, uint32_t run)
+MontarCenario (const std::string &protocol, double speed, uint32_t run, uint32_t nodes)
 {
   // Seed fixa + número de run: isso é o que torna cada repetição
   // independente (uma sequência de números aleatórios diferente por run) e,
@@ -200,7 +276,7 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run)
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", StringValue (PHY_MODE));
 
   Cenario c;
-  c.nodes.Create (NUM_NODES);
+  c.nodes.Create (nodes);
 
   // ---- Wi-Fi 802.11b em modo ad hoc (sem access point) ----
   WifiHelper wifi;
@@ -302,15 +378,16 @@ ValidarProtocolo (const std::string &protocol)
   bool ok = true;
 
   // Cenário pequeno, só para checagem — run=9999 para nunca colidir com os
-  // runs 1..NUM_RUNS usados nos experimentos de verdade.
-  Cenario c = MontarCenario (protocol, /*speed*/ 5.0, /*run*/ 9999);
+  // runs 1..NUM_RUNS usados nos experimentos de verdade. Nodes = NODES_BASE:
+  // a validação não depende do número de nós, então basta checar uma vez.
+  Cenario c = MontarCenario (protocol, /*speed*/ 5.0, /*run*/ 9999, NODES_BASE);
 
   auto Check = [&ok] (bool cond, const std::string &msg) {
     std::cout << (cond ? "  [OK]    " : "  [FALHA] ") << msg << std::endl;
     if (!cond) ok = false;
   };
 
-  Check (c.nodes.GetN () == NUM_NODES,
+  Check (c.nodes.GetN () == NODES_BASE,
          "nos criados: " + std::to_string (c.nodes.GetN ()));
 
   bool allAdhoc = true;
@@ -350,18 +427,19 @@ ValidarProtocolo (const std::string &protocol)
 // fluxo no CSV de resultados.
 // =============================================================================
 static void
-RunExperiment (const std::string &protocol, double speed, uint32_t run)
+RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t nodes,
+               const std::string &csvPath, const std::string &nodeTag)
 {
-  Cenario c = MontarCenario (protocol, speed, run);
+  Cenario c = MontarCenario (protocol, speed, run, nodes);
 
   const double trafficStop = SIM_TIME_S - GUARD_S; // tráfego termina em 118 s
 
   // ---- Tráfego UDP: 4 fluxos simultâneos e determinísticos ----
-  // fluxo i liga o nó i ao nó (NUM_NODES-1-i), na porta BASE_PORT+i.
+  // fluxo i liga o nó i ao nó (nodes-1-i), na porta BASE_PORT+i.
   for (uint32_t i = 0; i < NUM_FLOWS; ++i)
     {
       uint32_t senderId = i;
-      uint32_t receiverId = (NUM_NODES - 1) - i;
+      uint32_t receiverId = (nodes - 1) - i;
       uint16_t port = BASE_PORT + i;
 
       UdpServerHelper server (port);
@@ -390,7 +468,18 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
   Ptr<Ipv4FlowClassifier> classifier = DynamicCast<Ipv4FlowClassifier> (flowmon.GetClassifier ());
   std::map<FlowId, FlowMonitor::FlowStats> stats = monitor->GetFlowStats ();
 
-  std::ofstream csv (OUT_CSV, std::ios::app);
+  // XML bruto do FlowMonitor: só para run=1 de cada combinação (amostra de
+  // 12 arquivos por estágio, não as 300 execuções completas — ver topo do
+  // arquivo). O nodeTag ("20n"/"10n") distingue os arquivos dos dois estágios.
+  if (run == 1)
+    {
+      std::ostringstream xmlName;
+      xmlName << OUT_FLOWMON_DIR << "/flowmon_" << protocol << "_speed"
+              << static_cast<int> (speed) << "_" << nodeTag << ".xml";
+      monitor->SerializeToXmlFile (xmlName.str (), true, true);
+    }
+
+  std::ofstream csv (csvPath, std::ios::app);
   csv << std::fixed << std::setprecision (6);
 
   uint32_t somaTx = 0, somaRx = 0;
@@ -402,7 +491,7 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
   for (uint32_t i = 0; i < NUM_FLOWS; ++i)
     {
       Ipv4Address src = c.interfaces.GetAddress (i);
-      Ipv4Address dst = c.interfaces.GetAddress ((NUM_NODES - 1) - i);
+      Ipv4Address dst = c.interfaces.GetAddress ((nodes - 1) - i);
       uint16_t port = BASE_PORT + i;
 
       FlowId flowId = 0;
@@ -452,8 +541,8 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run)
   csv.close ();
 
   double pdrGeral = (somaTx > 0) ? (100.0 * somaRx / somaTx) : 0.0;
-  std::cout << "  " << protocol << " | " << speed << " m/s | run " << run << " -> tx=" << somaTx
-            << " rx=" << somaRx << " PDR=" << pdrGeral << "%" << std::endl;
+  std::cout << "  [" << nodeTag << "] " << protocol << " | " << speed << " m/s | run " << run
+            << " -> tx=" << somaTx << " rx=" << somaRx << " PDR=" << pdrGeral << "%" << std::endl;
 
   Simulator::Destroy ();
 }
@@ -468,10 +557,19 @@ main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   std::filesystem::create_directories (OUT_DIR);
+  std::filesystem::create_directories (OUT_FLOWMON_DIR);
+
+  // A partir daqui, tudo que for escrito em std::cout também é gravado em
+  // OUT_LOG (validação, progresso, resumo por execução e mensagem final).
+  std::ofstream logFile (OUT_LOG, std::ios::trunc);
+  TeeBuf teeBuf (std::cout.rdbuf (), logFile.rdbuf ());
+  std::streambuf *oldCoutBuf = std::cout.rdbuf (&teeBuf);
+
+  const uint32_t totalEtapas = 1 + static_cast<uint32_t> (STAGES.size ());
 
   // ---- Etapa 1: valida rapidamente cada protocolo antes de confiar nele ----
   std::cout << "===================================================" << std::endl;
-  std::cout << " ETAPA 1/2: validando AODV, OLSR e DSDV" << std::endl;
+  std::cout << " ETAPA 1/" << totalEtapas << ": validando AODV, OLSR e DSDV" << std::endl;
   std::cout << "===================================================" << std::endl;
   bool todasOk = true;
   for (const std::string &p : PROTOCOLS)
@@ -488,40 +586,54 @@ main (int argc, char *argv[])
       std::cout << "\nTodos os protocolos validados com sucesso." << std::endl;
     }
 
-  // ---- Etapa 2: matriz experimental completa (protocolos x velocidades x runs) ----
-  std::cout << "\n===================================================" << std::endl;
-  std::cout << " ETAPA 2/2: matriz experimental (" << PROTOCOLS.size () << " protocolos x "
-            << SPEEDS.size () << " velocidades x " << NUM_RUNS << " runs = "
-            << PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS << " execucoes)" << std::endl;
-  std::cout << "===================================================" << std::endl;
-
-  // CSV único com todos os resultados; cabeçalho escrito uma vez, truncando
-  // qualquer resultado de uma execução anterior do programa.
-  {
-    std::ofstream csv (OUT_CSV, std::ios::trunc);
-    csv << "protocol,speed,run,flowId,txPackets,rxPackets,lostPackets,rxBytes,"
-           "throughputMbps,pdrPct,delayMs,jitterMs\n";
-  }
-
-  uint32_t execucao = 0;
-  const uint32_t total =
+  // ---- Etapas seguintes: uma matriz experimental completa por estágio ----
+  // (3 protocolos x 4 velocidades x 25 runs cada), uma a 20 nós (base) e
+  // outra a 10 nós (extensão — variável experimental própria do grupo).
+  const uint32_t totalPorEtapa =
       static_cast<uint32_t> (PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS);
-  for (const std::string &p : PROTOCOLS)
+
+  for (size_t stageIdx = 0; stageIdx < STAGES.size (); ++stageIdx)
     {
-      for (double s : SPEEDS)
+      const Stage &st = STAGES[stageIdx];
+
+      std::cout << "\n===================================================" << std::endl;
+      std::cout << " ETAPA " << (2 + stageIdx) << "/" << totalEtapas << ": " << st.label << " ("
+                << PROTOCOLS.size () << " protocolos x " << SPEEDS.size () << " velocidades x "
+                << NUM_RUNS << " runs = " << totalPorEtapa << " execucoes, " << st.nodes
+                << " nos)" << std::endl;
+      std::cout << "===================================================" << std::endl;
+
+      // CSV deste estágio; cabeçalho escrito uma vez, truncando qualquer
+      // resultado de uma execução anterior do programa.
+      {
+        std::ofstream csv (st.csvPath, std::ios::trunc);
+        csv << "protocol,speed,run,flowId,txPackets,rxPackets,lostPackets,rxBytes,"
+               "throughputMbps,pdrPct,delayMs,jitterMs\n";
+      }
+
+      uint32_t execucao = 0;
+      for (const std::string &p : PROTOCOLS)
         {
-          for (uint32_t r = 1; r <= NUM_RUNS; ++r)
+          for (double s : SPEEDS)
             {
-              ++execucao;
-              std::cout << "[" << execucao << "/" << total << "] " << p << ", " << s
-                        << " m/s, run " << r << "..." << std::endl;
-              RunExperiment (p, s, r);
+              for (uint32_t r = 1; r <= NUM_RUNS; ++r)
+                {
+                  ++execucao;
+                  std::cout << "[" << execucao << "/" << totalPorEtapa << "] (" << st.tag << ") "
+                            << p << ", " << s << " m/s, run " << r << "..." << std::endl;
+                  RunExperiment (p, s, r, st.nodes, st.csvPath, st.tag);
+                }
             }
         }
+
+      std::cout << "\nConcluida a etapa \"" << st.label << "\". Resultados em " << st.csvPath
+                << " (" << totalPorEtapa * NUM_FLOWS << " linhas esperadas)." << std::endl;
     }
 
-  std::cout << "\nConcluido. Resultados em " << OUT_CSV << " (" << total * NUM_FLOWS
-            << " linhas esperadas: " << total << " execucoes x " << NUM_FLOWS << " fluxos)."
-            << std::endl;
+  std::cout << "\nTudo concluido. XML do FlowMonitor (amostra, 1 run por combinacao, por "
+            << "estagio) em " << OUT_FLOWMON_DIR << "/. Log completo desta execucao em "
+            << OUT_LOG << "." << std::endl;
+
+  std::cout.rdbuf (oldCoutBuf); // restaura o buffer original antes de sair
   return 0;
 }

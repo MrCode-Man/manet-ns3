@@ -1,23 +1,37 @@
 
 """
-analyze.py - análise do resultados.csv gerado pelo ns-3 (scratch/manet-routing.cc)
+analyze.py - análise dos CSVs gerados pelo ns-3 (scratch/manet-routing.cc)
 
-Lê data/raw/resultados.csv (1 linha por fluxo: protocol,speed,run,flowId,
-txPackets,rxPackets,lostPackets,rxBytes,throughputMbps,pdrPct,delayMs,jitterMs),
-valida, agrega os 4 fluxos por execução, calcula média/desvio/IC 95% sobre as
-repetições, e gera os 4 gráficos obrigatórios (PDR, throughput, delay, jitter
-x velocidade) + boxplots de dispersão + tabelas processadas.
+Processa dois conjuntos de dados, um por estágio da matriz experimental:
+  - base (tag "20n"):      data/raw/resultados_20n.csv (20 nós)
+  - extensão (tag "10n"):  data/raw/resultados_10n.csv (10 nós, variável
+                            experimental própria do grupo)
 
-Saídas:
-    data/processed/per_run.csv               1 linha por execução (já agregada)
-    data/processed/summary.csv               1 linha por (protocolo, velocidade)
-    data/processed/validation_report.txt     relatório da validação
-    figures/<metrica>_vs_speed.png/.pdf      4 gráficos obrigatórios
-    figures/boxplot_<metrica>.png            dispersão das 5 repetições
+Cada CSV tem 1 linha por fluxo (protocol,speed,run,flowId,txPackets,
+rxPackets,lostPackets,rxBytes,throughputMbps,pdrPct,delayMs,jitterMs). Para
+cada um: valida, agrega os 4 fluxos por execução, calcula média/desvio/IC 95%
+sobre as repetições, e gera os 4 gráficos obrigatórios (PDR, throughput,
+delay, jitter x velocidade) + boxplots de dispersão + tabelas processadas,
+com o tag do estágio no nome do arquivo. Se os dois estágios tiverem rodado
+com sucesso, gera também 4 gráficos comparando 20 vs 10 nós.
+
+A extensão (10n) é opcional: se data/raw/resultados_10n.csv ainda não
+existir, o script processa só a base e avisa que a comparação foi pulada —
+não é um erro (permite analisar a base antes de rodar a extensão).
+
+Saídas (por estágio, <tag> = 20n ou 10n):
+    data/processed/per_run_<tag>.csv          1 linha por execução (já agregada)
+    data/processed/summary_<tag>.csv          1 linha por (protocolo, velocidade)
+    data/processed/validation_report_<tag>.txt  relatório da validação
+    figures/<metrica>_vs_speed_<tag>.png/.pdf 4 gráficos obrigatórios
+    figures/boxplot_<metrica>_<tag>.png       dispersão das 25 repetições
+
+Saídas de comparação (só se os dois estágios tiverem dados válidos):
+    figures/<metrica>_nodes_comparison.png/.pdf  20 vs 10 nós, por protocolo
 
 Uso:
-    python3 scripts/analyze.py                      # default: data/raw/resultados.csv
-    python3 scripts/analyze.py --raw outro/caminho.csv
+    python3 scripts/analyze.py                      # defaults: resultados_20n.csv / resultados_10n.csv
+    python3 scripts/analyze.py --raw outro/caminho.csv --raw-ext outro/extensao.csv
     python3 scripts/analyze.py --errorbars std       # barras de erro = desvio padrão em vez de IC 95%
 """
 
@@ -135,8 +149,8 @@ def load_and_validate(path: Path, rep: Report) -> pd.DataFrame | None:
     """
     Lê o CSV e roda todas as checagens de sanidade antes de confiar nos dados:
     colunas presentes, tipos numéricos, protocolos e velocidades esperados,
-    matriz experimental completa (3 protocolos x 4 velocidades x 5 runs,
-    cada execução com exatamente 4 fluxos), e valores fisicamente impossíveis
+    matriz experimental completa (3 protocolos x 4 velocidades x EXPECTED_RUNS
+    runs, cada execução com exatamente 4 fluxos), e valores fisicamente impossíveis
     (rx maior que tx, PDR fora de 0-100, etc.). Retorna None se o arquivo não
     puder ser lido; nesse caso rep.errors já descreve o motivo.
     """
@@ -297,12 +311,14 @@ def summarize(per_run: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------------------------------------------------------
 # Gráficos
 # ------------------------------------------------------------------------------
-def plot_metric(summary: pd.DataFrame, metric: str, errorbars: str, figures_dir: Path) -> list[Path]:
+def plot_metric(summary: pd.DataFrame, metric: str, errorbars: str, figures_dir: Path,
+                 tag: str) -> list[Path]:
     """
     Gráfico de linha de uma métrica em função da velocidade, com uma série
     por protocolo e barras de erro (IC 95% por padrão, ou desvio padrão se
     errorbars="std"). Salva em .png (visualização rápida) e .pdf (vetorial,
-    melhor para incluir num documento).
+    melhor para incluir num documento). `tag` (ex. "20n"/"10n") identifica o
+    estágio no nome do arquivo.
     """
     ylabel, title, suffix = METRICS[metric]
     fig, ax = plt.subplots(figsize=(7.2, 5))
@@ -333,19 +349,20 @@ def plot_metric(summary: pd.DataFrame, metric: str, errorbars: str, figures_dir:
 
     paths = []
     for ext in ("png", "pdf"):
-        p = figures_dir / f"{suffix}_vs_speed.{ext}"
+        p = figures_dir / f"{suffix}_vs_speed_{tag}.{ext}"
         fig.savefig(p, bbox_inches="tight")
         paths.append(p)
     plt.close(fig)
     return paths
 
 
-def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path) -> Path:
+def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path, tag: str) -> Path:
     """
     Boxplot de uma métrica por velocidade, com os 3 protocolos lado a lado em
     cada posição. Diferente do gráfico de linha (que só mostra média ± erro),
-    aqui dá para ver a distribuição completa das 5 repetições — útil para
-    perceber assimetria ou outliers que a média sozinha esconde.
+    aqui dá para ver a distribuição completa das repetições — útil para
+    perceber assimetria ou outliers que a média sozinha esconde. `tag`
+    (ex. "20n"/"10n") identifica o estágio no nome do arquivo.
     """
     ylabel, title, suffix = METRICS[metric]
     fig, ax = plt.subplots(figsize=(9, 5.5))
@@ -373,44 +390,87 @@ def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path) -> Pat
     handles = [plt.Rectangle((0, 0), 1, 1, facecolor=COLORS[p], alpha=0.6, label=p) for p in PROTOCOLS]
     ax.legend(handles=handles, title="Protocolo")
 
-    p = figures_dir / f"boxplot_{suffix}.png"
+    p = figures_dir / f"boxplot_{suffix}_{tag}.png"
     fig.savefig(p, bbox_inches="tight")
     plt.close(fig)
     return p
 
 
-# ------------------------------------------------------------------------------
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Análise do resultados.csv do ns-3 (MANET).")
-    ap.add_argument("--raw", type=Path, default=ROOT / "data" / "raw" / "resultados.csv")
-    ap.add_argument("--processed-dir", type=Path, default=ROOT / "data" / "processed")
-    ap.add_argument("--figures-dir", type=Path, default=ROOT / "figures")
-    ap.add_argument("--errorbars", choices=["ci", "std"], default="ci")
-    ap.add_argument("--force", action="store_true",
-                    help="gera mesmo com erros de validação (não use para o resultado final)")
-    args = ap.parse_args()
+def plot_nodes_comparison(summary_20n: pd.DataFrame, summary_10n: pd.DataFrame, metric: str,
+                           errorbars: str, figures_dir: Path) -> list[Path]:
+    """
+    Gráfico de linha comparando os dois estágios (20 vs 10 nós): uma série
+    por combinação protocolo x nº de nós (mesma cor por protocolo, traço
+    sólido = 20 nós, tracejado = 10 nós), com barras de erro.
+    """
+    ylabel, title, suffix = METRICS[metric]
+    fig, ax = plt.subplots(figsize=(7.5, 5.2))
+    err_col = f"{metric}_ci_half" if errorbars == "ci" else f"{metric}_std"
 
-    args.processed_dir.mkdir(parents=True, exist_ok=True)
-    args.figures_dir.mkdir(parents=True, exist_ok=True)
+    for nodes_label, summary, linestyle in (("20 nós", summary_20n, "-"), ("10 nós", summary_10n, "--")):
+        for proto in PROTOCOLS:
+            sub = summary[summary["protocol"] == proto].sort_values("speed")
+            if sub.empty:
+                continue
+            xs = sub["speed"].to_numpy(dtype=float)
+            ys = sub[f"{metric}_mean"].to_numpy(dtype=float)
+            yerr = np.nan_to_num(sub[err_col].to_numpy(dtype=float), nan=0.0)
+            ax.errorbar(xs, ys, yerr=yerr, label=f"{proto} ({nodes_label})", color=COLORS[proto],
+                        marker=MARKERS[proto], linestyle=linestyle, markersize=6, linewidth=1.8,
+                        capsize=3, elinewidth=1.1)
+
+    ax.set_xlabel("Velocidade dos nós (m/s)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{title} — efeito do número de nós (20 vs 10)")
+    ax.set_xticks(SPEEDS)
+    if metric == "pdrPct":
+        ax.set_ylim(0, 100)
+    else:
+        ax.set_ylim(bottom=0)
+    ax.legend(title="Protocolo (nós)", fontsize=9, ncol=2)
+    ax.text(0.99, 0.01, f"média ± {'IC 95%' if errorbars == 'ci' else 'desvio padrão'} "
+                        f"({EXPECTED_RUNS} repetições)", transform=ax.transAxes,
+            ha="right", va="bottom", fontsize=8, color="gray")
+
+    paths = []
+    for ext in ("png", "pdf"):
+        p = figures_dir / f"{suffix}_nodes_comparison.{ext}"
+        fig.savefig(p, bbox_inches="tight")
+        paths.append(p)
+    plt.close(fig)
+    return paths
+
+
+# ------------------------------------------------------------------------------
+def run_pipeline(raw_path: Path, tag: str, label: str, processed_dir: Path, figures_dir: Path,
+                  errorbars: str, force: bool) -> pd.DataFrame | None:
+    """
+    Roda o pipeline completo (validar -> agregar -> resumir -> tabelas ->
+    4 gráficos -> boxplots) para um único estágio (tag "20n" ou "10n").
+    Devolve o DataFrame de resumo em caso de sucesso, ou None se a validação
+    reprovou (ou o arquivo não existe/está vazio).
+    """
+    print(f"\n{'=' * 78}\nANALISANDO: {label} ({raw_path})\n{'=' * 78}")
 
     rep = Report()
-    df = load_and_validate(args.raw, rep)
+    df = load_and_validate(raw_path, rep)
 
-    report_path = args.processed_dir / "validation_report.txt"
+    report_path = processed_dir / f"validation_report_{tag}.txt"
     report_path.write_text(rep.text() + "\n", encoding="utf-8")
     print(rep.text())
     print(f"\n(relatório salvo em {report_path})")
 
-    if df is None or (rep.errors and not args.force):
+    if df is None or (rep.errors and not force):
         if rep.errors:
-            print("\nAnálise interrompida: corrija os erros acima (ou use --force só para depurar).")
-        return 2
+            print(f"\n{label}: análise interrompida (corrija os erros acima, ou use --force "
+                  "só para depurar).")
+        return None
 
     per_run = aggregate_runs(df)
     summary = summarize(per_run)
 
-    per_run_path = args.processed_dir / "per_run.csv"
-    summary_path = args.processed_dir / "summary.csv"
+    per_run_path = processed_dir / f"per_run_{tag}.csv"
+    summary_path = processed_dir / f"summary_{tag}.csv"
     per_run.to_csv(per_run_path, index=False, float_format="%.6g")
     summary.to_csv(summary_path, index=False, float_format="%.6g")
     print(f"\nTabela por execução : {per_run_path}")
@@ -426,17 +486,53 @@ def main() -> int:
     with pd.option_context("display.width", 200, "display.max_columns", 20):
         print(linhas.to_string(index=False))
 
-    print("\nGerando os 4 gráficos obrigatórios...")
+    print(f"\nGerando os 4 gráficos obrigatórios ({label})...")
     for m in METRICS:
-        for p in plot_metric(summary, m, args.errorbars, args.figures_dir):
+        for p in plot_metric(summary, m, errorbars, figures_dir, tag):
             print(f"  -> {p}")
 
-    print("\nGerando boxplots de dispersão...")
+    print(f"\nGerando boxplots de dispersão ({label})...")
     for m in METRICS:
-        print(f"  -> {boxplot_metric(per_run, m, args.figures_dir)}")
+        print(f"  -> {boxplot_metric(per_run, m, figures_dir, tag)}")
+
+    return summary
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Análise dos CSVs do ns-3 (MANET): base (20n) + extensão (10n).")
+    ap.add_argument("--raw", type=Path, default=ROOT / "data" / "raw" / "resultados_20n.csv",
+                    help="CSV da matriz-base (20 nós)")
+    ap.add_argument("--raw-ext", type=Path, default=ROOT / "data" / "raw" / "resultados_10n.csv",
+                    help="CSV da extensão (10 nós); opcional — pulado se não existir")
+    ap.add_argument("--processed-dir", type=Path, default=ROOT / "data" / "processed")
+    ap.add_argument("--figures-dir", type=Path, default=ROOT / "figures")
+    ap.add_argument("--errorbars", choices=["ci", "std"], default="ci")
+    ap.add_argument("--force", action="store_true",
+                    help="gera mesmo com erros de validação (não use para o resultado final)")
+    args = ap.parse_args()
+
+    args.processed_dir.mkdir(parents=True, exist_ok=True)
+    args.figures_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_20n = run_pipeline(args.raw, "20n", "20 nós (base)", args.processed_dir,
+                               args.figures_dir, args.errorbars, args.force)
+
+    summary_10n = None
+    if args.raw_ext.exists():
+        summary_10n = run_pipeline(args.raw_ext, "10n", "10 nós (extensão)", args.processed_dir,
+                                   args.figures_dir, args.errorbars, args.force)
+    else:
+        print(f"\n(extensão pulada: {args.raw_ext} não encontrado — rode a extensão no ns-3 "
+              "antes de gerar a comparação 20 vs 10 nós)")
+
+    if summary_20n is not None and summary_10n is not None:
+        print("\nGerando comparação 20 vs 10 nós...")
+        for m in METRICS:
+            for p in plot_nodes_comparison(summary_20n, summary_10n, m, args.errorbars, args.figures_dir):
+                print(f"  -> {p}")
 
     print("\nConcluído.")
-    return 0
+    return 0 if summary_20n is not None else 2
 
 
 if __name__ == "__main__":

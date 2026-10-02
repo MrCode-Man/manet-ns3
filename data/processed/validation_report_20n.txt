@@ -3,12 +3,12 @@ RELATÓRIO DE VALIDAÇÃO
 ==============================================================================
 
 INFORMAÇÕES:
-  - 1200 linhas lidas de /home/gabriel/manet-ns3/data/raw/resultados.csv
+  - 1200 linhas lidas de C:\Users\guilh\ClionProjects\manet-ns3\data\raw\resultados_20n.csv
   - execuções: 300 (esperado 300)
 
 AVISOS (2):
   ! 93/1200 fluxos sem nenhuma recepção, por protocolo: {'AODV': 2, 'DSDV': 55, 'OLSR': 36}
-  ! txPackets varia entre execuções: [992, 1010, 1013, 1030] (deveria ser sempre o mesmo valor, calculado a partir de warmup/guard/intervalo do pacote).
+  ! txPackets varia entre execuções: [np.int64(992), np.int64(1010), np.int64(1013), np.int64(1030)] (deveria ser sempre o mesmo valor, calculado a partir de warmup/guard/intervalo do pacote).
 
 ERROS (0):
 
