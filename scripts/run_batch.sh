@@ -57,8 +57,10 @@ echo ">> Ligando src/manet-routing.cc a $NS3_DIR/scratch/ (symlink)"
 rm -f "$NS3_DIR/scratch/manet-routing.cc"
 ln -s "$PROJECT_DIR/src/manet-routing.cc" "$NS3_DIR/scratch/manet-routing.cc"
 
-echo ">> Compilando (./ns3 build)..."
-(cd "$NS3_DIR" && ./ns3 build)
+echo ">> Compilando (./ns3 build manet-routing)..."
+# So builda o alvo manet-routing (nao a arvore toda): outros alvos soltos em
+# scratch/ (ex.: projetos externos do usuario) nao devem poder quebrar este build.
+(cd "$NS3_DIR" && ./ns3 build manet-routing)
 
 echo ">> Rodando a simulacao (validacao + ETAPA 2/3 base 20 nos + ETAPA 3/3 extensao 10 nos)."
 echo ">> Isso demora bastante (25 repeticoes x 2 estagios); o progresso [n/300]"
