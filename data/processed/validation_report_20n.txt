@@ -7,7 +7,7 @@ INFORMAÇÕES:
   - execuções: 60 (esperado 60)
 
 AVISOS (1):
-  ! 19/240 fluxos sem nenhuma recepção, por protocolo: {'DSDV': 12, 'OLSR': 7}
+  ! 18/240 fluxos sem nenhuma recepção, por protocolo: {'AODV': 1, 'DSDV': 7, 'OLSR': 10}
 
 ERROS (0):
 

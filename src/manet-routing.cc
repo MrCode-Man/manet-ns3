@@ -283,6 +283,15 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run, uint32_t
   // sempre o mesmo resultado).
   RngSeedManager::SetSeed (MASTER_SEED);
   RngSeedManager::SetRun (run);
+  // O ns-3 atribui um stream automático a toda variável aleatória que não
+  // recebeu um explicitamente (backoff do MAC Wi-Fi, jitter dos HELLO/TC do
+  // OLSR, etc.), a partir de um contador global do processo. Sem este reset,
+  // o contador continuaria subindo de uma execução para a outra, e o
+  // resultado de um run passaria a depender de quantas execuções vieram antes
+  // dele (a mesma configuração dava 50% e depois 0% de PDR no mesmo
+  // processo). Zerar aqui isola cada execução das anteriores: mesmo
+  // protocolo + velocidade + run + nós => sempre o mesmo resultado.
+  RngSeedManager::ResetNextStreamIndex ();
 
   // Iguala a taxa do tráfego broadcast (HELLO/TC/updates dos protocolos de
   // roteamento) à taxa dos dados — ver "Notas de implementação" no topo.
@@ -505,8 +514,6 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
   std::ofstream csv (csvPath, std::ios::app);
   csv << std::fixed << std::setprecision (6);
 
-  uint32_t somaTx = 0, somaRx = 0;
-
   // Uma linha por fluxo de dados, identificado pela combinação de origem,
   // destino e porta — isso separa os 4 fluxos de tráfego do tráfego de
   // controle gerado pelo próprio protocolo de roteamento, que também
@@ -572,15 +579,8 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
       csv << protocol << "," << speed << "," << run << "," << flowId << "," << tx << "," << rx
           << "," << lost << "," << rxBytes << "," << throughputMbps << "," << pdrPct << ","
           << delayMs << "," << jitterMs << "\n";
-
-      somaTx += tx;
-      somaRx += rx;
     }
   csv.close ();
-
-  double pdrGeral = (somaTx > 0) ? (100.0 * somaRx / somaTx) : 0.0;
-  std::cout << "  [" << nodeTag << "] " << protocol << " | " << speed << " m/s | run " << run
-            << " -> tx=" << somaTx << " rx=" << somaRx << " PDR=" << pdrGeral << "%" << std::endl;
 
   Simulator::Destroy ();
 }
@@ -649,18 +649,17 @@ main (int argc, char *argv[])
                "throughputMbps,pdrPct,delayMs,jitterMs\n";
       }
 
-      uint32_t execucao = 0;
       for (const std::string &p : PROTOCOLS)
         {
           for (double s : SPEEDS)
             {
               for (uint32_t r = 1; r <= NUM_RUNS; ++r)
                 {
-                  ++execucao;
-                  std::cout << "[" << execucao << "/" << totalPorEtapa << "] (" << st.tag << ") "
-                            << p << ", " << s << " m/s, run " << r << "..." << std::endl;
                   RunExperiment (p, s, r, st.nodes, st.csvPath, st.tag);
                 }
+              // uma linha de progresso por (protocolo, velocidade), não por execução
+              std::cout << "  [" << st.tag << "] " << p << " | " << s << " m/s concluido ("
+                        << NUM_RUNS << " runs)" << std::endl;
             }
         }
 
