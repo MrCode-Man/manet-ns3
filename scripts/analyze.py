@@ -24,7 +24,7 @@ Saídas (por estágio, <tag> = 20n ou 10n):
     data/processed/summary_<tag>.csv          1 linha por (protocolo, velocidade)
     data/processed/validation_report_<tag>.txt  relatório da validação
     figures/<metrica>_vs_speed_<tag>.png/.pdf 4 gráficos obrigatórios
-    figures/boxplot_<metrica>_<tag>.png       dispersão das 25 repetições
+    figures/boxplot_<metrica>_<tag>.png       dispersão das 60 repetições
 
 Saídas de comparação (só se os dois estágios tiverem dados válidos):
     figures/<metrica>_nodes_comparison.png/.pdf  20 vs 10 nós, por protocolo
@@ -53,7 +53,7 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parent.parent  # raiz do projeto (manet-ns3/)
 PROTOCOLS = ["AODV", "OLSR", "DSDV"]
 SPEEDS = [1.0, 5.0, 10.0, 20.0]
-EXPECTED_RUNS = 25
+EXPECTED_RUNS = 60
 FLOWS_PER_RUN = 4
 COLORS = {"AODV": "#1f77b4", "OLSR": "#d62728", "DSDV": "#2ca02c"}
 MARKERS = {"AODV": "o", "OLSR": "s", "DSDV": "^"}

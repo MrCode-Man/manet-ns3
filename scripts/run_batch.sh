@@ -7,26 +7,30 @@
 # entre o ns-3 (onde o programa precisa estar, em $NS3_DIR/scratch/) e este
 # projeto (onde os resultados devem ficar, em data/raw/):
 #
-#   1. liga src/manet-routing.cc a $NS3_DIR/scratch/ (symlink)
-#   2. compila (./ns3 build)
-#   3. roda (./ns3 run scratch/manet-routing) — isso sozinho já faz a
+#   1. move o conteúdo atual de data/raw/, data/processed/ e figures/ para
+#      uma subpasta bkp/ dentro de cada uma (substitui o bkp/ da execução
+#      anterior) — cada execução nova começa com essas 3 pastas limpas
+#   2. liga src/manet-routing.cc a $NS3_DIR/scratch/ (symlink)
+#   3. compila (./ns3 build)
+#   4. roda (./ns3 run scratch/manet-routing) — isso sozinho já faz a
 #      validação dos 3 protocolos e DOIS estágios da matriz experimental:
 #        - base: 3 protocolos x 4 velocidades x 25 repeticoes, 20 nos
 #        - extensao: a mesma matriz, 10 nos (variavel experimental do grupo)
 #      600 execucoes no total.
-#   4. copia de volta para data/raw/ deste projeto: resultados_20n.csv,
+#   5. copia de volta para data/raw/ deste projeto: resultados_20n.csv,
 #      resultados_10n.csv, o log completo da execução (log.txt) e a amostra
 #      de XML do FlowMonitor (flowmon/, 1 arquivo por combinação
 #      protocolo x velocidade x estágio)
+#   6. roda scripts/analyze.py sobre os CSVs copiados, gerando as tabelas
+#      processadas (data/processed/) e os gráficos (figures/)
 #
 # Uso:
 #   export NS3_DIR=$HOME/ns-3-allinone
 #   bash scripts/run_batch.sh
 #
-# Se data/raw/resultados_20n.csv, data/raw/resultados_10n.csv,
-# data/raw/log.txt ou data/raw/flowmon/ já existirem, cada um é movido para
-# um .bak antes de começar (evita sobrescrever/misturar resultados por
-# engano).
+# data/raw/bkp/, data/processed/bkp/ e figures/bkp/ guardam só a execução
+# anterior (cada rodada substitui o bkp/ da rodada antes dela) — não é um
+# histórico completo, é só para não perder o último resultado por engano.
 #
 # Com 25 repetições por combinação (em vez de 5) e dois estágios (20 nós +
 # 10 nós) em vez de um, a simulação demora bem mais que uma matriz simples
@@ -45,6 +49,23 @@ if [[ ! -x "$NS3_DIR/ns3" ]]; then
   echo "ERRO: nao encontrei o executavel '$NS3_DIR/ns3'. NS3_DIR esta correto?" >&2
   exit 1
 fi
+
+# Move o conteudo atual de $dir (exceto a propria bkp/) para $dir/bkp/,
+# substituindo o bkp/ de uma execucao anterior. Usado para as 3 pastas de
+# saida (data/raw, data/processed, figures), que comecam limpas a cada
+# execucao nova.
+backup_old_outputs () {
+  local dir="$1"
+  mkdir -p "$dir"
+  rm -rf "$dir/bkp"
+  mkdir -p "$dir/bkp"
+  find "$dir" -mindepth 1 -maxdepth 1 ! -name bkp -exec mv {} "$dir/bkp/" \;
+}
+
+echo ">> Movendo saida da execucao anterior para bkp/ (data/raw, data/processed, figures)..."
+backup_old_outputs "$PROJECT_DIR/data/raw"
+backup_old_outputs "$PROJECT_DIR/data/processed"
+backup_old_outputs "$PROJECT_DIR/figures"
 
 echo ">> Ligando src/manet-routing.cc a $NS3_DIR/scratch/ (symlink)"
 # Link simbolico em vez de copia: o arquivo dentro do scratch/ do ns-3 passa a
@@ -71,13 +92,12 @@ SRC_LOG="$NS3_DIR/resultado_simulacao/log.txt"
 SRC_FLOWMON="$NS3_DIR/resultado_simulacao/flowmon"
 DST_LOG="$PROJECT_DIR/data/raw/log.txt"
 DST_FLOWMON="$PROJECT_DIR/data/raw/flowmon"
-TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 mkdir -p "$PROJECT_DIR/data/raw"
 
-# Copia um CSV de resultado_simulacao/ para data/raw/, fazendo backup do
-# arquivo anterior em data/raw/ se já existir. Usado para os dois estágios
-# (20n e 10n), que têm exatamente a mesma lógica de cópia.
+# Copia um CSV de resultado_simulacao/ para data/raw/. data/raw/ ja comeca
+# limpo (ver backup_old_outputs, acima), entao nao ha arquivo anterior pra
+# preservar aqui.
 copy_csv () {
   local nome="$1" # ex.: resultados_20n.csv
   local src="$NS3_DIR/resultado_simulacao/$nome"
@@ -87,10 +107,6 @@ copy_csv () {
     echo "ERRO: simulacao terminou mas nao encontrei $src" >&2
     exit 1
   fi
-  if [[ -f "$dst" ]]; then
-    mv "$dst" "$dst.bak.$TIMESTAMP"
-    echo ">> $nome anterior movido para backup."
-  fi
   cp "$src" "$dst"
 }
 
@@ -98,20 +114,12 @@ copy_csv "resultados_20n.csv"
 copy_csv "resultados_10n.csv"
 
 if [[ -f "$SRC_LOG" ]]; then
-  if [[ -f "$DST_LOG" ]]; then
-    mv "$DST_LOG" "$DST_LOG.bak.$TIMESTAMP"
-    echo ">> log.txt anterior movido para backup."
-  fi
   cp "$SRC_LOG" "$DST_LOG"
 else
   echo "AVISO: nao encontrei $SRC_LOG (log.txt nao foi copiado)." >&2
 fi
 
 if [[ -d "$SRC_FLOWMON" ]]; then
-  if [[ -d "$DST_FLOWMON" ]]; then
-    mv "$DST_FLOWMON" "$DST_FLOWMON.bak.$TIMESTAMP"
-    echo ">> flowmon/ anterior movido para backup."
-  fi
   cp -r "$SRC_FLOWMON" "$DST_FLOWMON"
 else
   echo "AVISO: nao encontrei $SRC_FLOWMON (XML do FlowMonitor nao foi copiado)." >&2
@@ -124,4 +132,6 @@ echo "   - resultados_20n.csv ($LINHAS_20N linhas de dados; esperado 1200) — m
 echo "   - resultados_10n.csv ($LINHAS_10N linhas de dados; esperado 1200) — extensao"
 echo "   - log.txt (log completo da execucao, os dois estagios)"
 echo "   - flowmon/ (amostra de XML do FlowMonitor, 1 por combinacao protocolo x velocidade x estagio)"
-echo ">> Proximo passo: python3 scripts/analyze.py"
+
+echo ">> Gerando graficos e tabelas (python3 scripts/analyze.py)..."
+(cd "$PROJECT_DIR" && python3 scripts/analyze.py)

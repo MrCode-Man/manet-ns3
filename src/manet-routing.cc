@@ -16,14 +16,14 @@
  *      confirmando que cada um foi realmente instalado nos nós antes de
  *      confiar em qualquer resultado;
  *   2) roda a matriz experimental-base completa: 3 protocolos x 4 velocidades
- *      x 25 repetições = 300 execuções, a 20 nós;
- *   3) roda a mesma matriz de novo (300 execuções), agora a 10 nós — a
+ *      x 60 repetições = 720 execuções, a 20 nós;
+ *   3) roda a mesma matriz de novo (720 execuções), agora a 10 nós — a
  *      variável experimental de extensão pedida pelo enunciado (ver
- *      "Extensão", README Seção 7). 600 execuções no total, sem precisar
+ *      "Extensão", README Seção 7). 1440 execuções no total, sem precisar
  *      editar nada nem passar parâmetro nenhum.
  *
  * Saída: um CSV por estágio, cada um com uma linha por fluxo UDP (4 por
- * execução, 1200 linhas no total por estágio):
+ * execução, 2880 linhas no total por estágio):
  *   resultado_simulacao/resultados_20n.csv  (matriz-base, 20 nós)
  *   resultado_simulacao/resultados_10n.csv  (extensão, 10 nós)
  * Colunas (iguais nos dois arquivos — o número de nós fica implícito no
@@ -35,7 +35,7 @@
  *   - resultado_simulacao/flowmon/flowmon_<protocolo>_speed<velocidade>_<tag>.xml
  *     — XML bruto do FlowMonitor (SerializeToXmlFile), uma amostra de 12
  *     arquivos por estágio (<tag> = 20n ou 10n; run=1 de cada uma das 12
- *     combinações protocolo x velocidade; não as 300 execuções de cada
+ *     combinações protocolo x velocidade; não as 720 execuções de cada
  *     estágio, por tamanho/tempo) — 24 arquivos no total.
  *   - resultado_simulacao/log.txt — cópia em arquivo de tudo que aparece no
  *     console (validação dos protocolos, progresso de cada estágio, resumo
@@ -46,15 +46,16 @@
  *   20 nós na matriz-base / 10 nós na extensão, área 500x500 m, Wi-Fi 802.11b
  *   em modo ad hoc (sem AP), RandomWaypointMobilityModel, tráfego UDP,
  *   4 fluxos simultâneos, 120 s de simulação, velocidades 1/5/10/20 m/s,
- *   protocolos AODV/OLSR/DSDV, 25 repetições por combinação, seed mestre
+ *   protocolos AODV/OLSR/DSDV, 60 repetições por combinação, seed mestre
  *   fixa com run variável por repetição.
  *
- * O número de repetições (NUM_RUNS) foi aumentado de 5 para 25: com só 5
- * repetições, o intervalo de confiança das métricas ficou largo demais para
- * separar os protocolos com segurança (mobilidade em MANET tem bastante
- * variância de execução para execução, mesmo com o mesmo cenário). Com 25
- * repetições, o erro padrão da média cai em torno de sqrt(25/5) ≈ 2,2x,
- * estreitando o intervalo de confiança proporcionalmente.
+ * O número de repetições (NUM_RUNS) foi aumentado de 5 para 25 e, depois,
+ * de 25 para 60: com só 5 repetições, o intervalo de confiança das métricas
+ * ficou largo demais para separar os protocolos com segurança (mobilidade em
+ * MANET tem bastante variância de execução para execução, mesmo com o mesmo
+ * cenário). Com 60 repetições, o erro padrão da média cai em torno de
+ * sqrt(60/5) ≈ 3,46x em relação às 5 originais, estreitando o intervalo de
+ * confiança proporcionalmente.
  *
  * NOTAS DE IMPLEMENTAÇÃO (detalhes que não têm uma única resposta óbvia,
  * então ficam documentados aqui para quem for ler o código depois):
@@ -101,6 +102,18 @@
  *   - Duração útil usada no cálculo de throughput: timeLastRxPacket menos
  *     timeFirstTxPacket, calculada por fluxo. Se o fluxo não recebeu nenhum
  *     pacote, o throughput desse fluxo é 0.
+ *
+ *   - txPackets de cada fluxo é contado no trace "Tx" do próprio UdpClient
+ *     (nível de aplicação), não no txPackets do FlowMonitor. O FlowMonitor só
+ *     conta um pacote como "tx" depois que o Ipv4L3Protocol já encontrou uma
+ *     rota pra ele; se o protocolo de roteamento não tiver rota pro destino
+ *     no instante exato em que o pacote é gerado (comum no OLSR, que não
+ *     enfileira pacotes à espera de rota como o AODV faz), o pacote é
+ *     descartado ali mesmo e nunca aparece nem como tx nem como lost nas
+ *     estatísticas do FlowMonitor — fazendo o PDR do OLSR parecer melhor do
+ *     que é, já que o denominador (tx) encolhe junto com a perda. Contando
+ *     tx na aplicação, esse pacote entra como perdido (lost = tx - rx) em
+ *     vez de simplesmente desaparecer da contagem.
  * ---------------------------------------------------------------------------
  */
 
@@ -143,7 +156,7 @@ static const uint32_t MASTER_SEED = 12345; // seed usada em todas as execuções
 
 static const std::vector<std::string> PROTOCOLS = {"aodv", "olsr", "dsdv"}; // protocolos comparados
 static const std::vector<double>      SPEEDS    = {1.0, 5.0, 10.0, 20.0};   // velocidades testadas (m/s)
-static const uint32_t                 NUM_RUNS  = 25; // repetições independentes por combinação
+static const uint32_t                 NUM_RUNS  = 60; // repetições independentes por combinação
 
 // ---- Parâmetros auxiliares do cenário (ver "Notas de implementação" acima) ----
 static const double      PAUSE_S       = 1.0;    // tempo parado em cada waypoint do RandomWaypoint
@@ -163,7 +176,7 @@ static const std::string OUT_LOG          = OUT_DIR + "/log.txt";
 static const std::string OUT_FLOWMON_DIR  = OUT_DIR + "/flowmon";
 
 // ---- Estágios da matriz experimental: base (20 nós) + extensão (10 nós) ----
-// Cada estágio roda a mesma matriz 3 protocolos x 4 velocidades x 25 runs,
+// Cada estágio roda a mesma matriz 3 protocolos x 4 velocidades x 60 runs,
 // só mudando o número de nós, o CSV de destino e a tag usada no nome dos
 // arquivos de XML do FlowMonitor.
 struct Stage
@@ -182,7 +195,7 @@ static const std::vector<Stage> STAGES = {
 // =============================================================================
 // Log em arquivo: um std::streambuf que duplica tudo que é escrito em
 // std::cout também para um std::ofstream, instalado uma única vez em main().
-// Isso captura automaticamente a validação, o progresso [n/300] e o resumo
+// Isso captura automaticamente a validação, o progresso [n/720] e o resumo
 // de cada execução em resultado_simulacao/log.txt, sem precisar reescrever
 // nenhum dos "std::cout << ..." já existentes em ValidarProtocolo/
 // RunExperiment/main.
@@ -434,6 +447,11 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
 
   const double trafficStop = SIM_TIME_S - GUARD_S; // tráfego termina em 118 s
 
+  // Contagem de tx real, no nível da aplicação (dispara em UdpClient::Send,
+  // antes do pacote descer para o IPv4). Ver "Por que não usar txPackets do
+  // FlowMonitor" abaixo, logo antes do cálculo de pdrPct.
+  std::vector<uint32_t> txAppCount (NUM_FLOWS, 0);
+
   // ---- Tráfego UDP: 4 fluxos simultâneos e determinísticos ----
   // fluxo i liga o nó i ao nó (nodes-1-i), na porta BASE_PORT+i.
   for (uint32_t i = 0; i < NUM_FLOWS; ++i)
@@ -455,6 +473,11 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
       ApplicationContainer clientApp = client.Install (c.nodes.Get (senderId));
       clientApp.Start (Seconds (WARMUP_S));   // tráfego começa só depois do tempo de convergência
       clientApp.Stop (Seconds (trafficStop)); // termina com folga antes do fim da simulação
+
+      Ptr<UdpClient> clientPtr = DynamicCast<UdpClient> (clientApp.Get (0));
+      clientPtr->TraceConnectWithoutContext (
+          "Tx", Callback<void, Ptr<const Packet>> (
+                    [&txAppCount, i] (Ptr<const Packet>) { txAppCount[i]++; }));
     }
 
   // ---- Medição de tráfego com o FlowMonitor ----
@@ -469,7 +492,7 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
   std::map<FlowId, FlowMonitor::FlowStats> stats = monitor->GetFlowStats ();
 
   // XML bruto do FlowMonitor: só para run=1 de cada combinação (amostra de
-  // 12 arquivos por estágio, não as 300 execuções completas — ver topo do
+  // 12 arquivos por estágio, não as 720 execuções completas — ver topo do
   // arquivo). O nodeTag ("20n"/"10n") distingue os arquivos dos dois estágios.
   if (run == 1)
     {
@@ -495,7 +518,23 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
       uint16_t port = BASE_PORT + i;
 
       FlowId flowId = 0;
-      uint32_t tx = 0, rx = 0, lost = 0;
+      // tx vem da contagem feita em UdpClient::Tx (ver loop de instalação
+      // dos fluxos, acima), não do txPackets do FlowMonitor. Motivo: o
+      // FlowMonitor só conta um pacote como "tx" no trace SendOutgoing do
+      // Ipv4L3Protocol, que só dispara DEPOIS de uma rota ser encontrada
+      // com sucesso (ipv4-l3-protocol.cc, Send() caso 1). Se o protocolo de
+      // roteamento não tiver rota pro destino no instante exato em que o
+      // pacote é gerado (ex.: enlace temporariamente fora de alcance pela
+      // mobilidade), o pacote é descartado ali mesmo com DROP_NO_ROUTE,
+      // *antes* desse trace — ou seja, nunca é contado nem como tx nem como
+      // lost pelo FlowMonitor, ele simplesmente some das estatísticas. Isso
+      // afeta sobretudo o OLSR (sem fila de espera por rota, diferente do
+      // AODV, que enfileira o pacote e tenta de novo depois de descobrir a
+      // rota), fazendo o txPackets do FlowMonitor variar entre execuções em
+      // vez de ser sempre o valor fixo esperado (calculado a partir de
+      // warmup/guard/intervalo) — e inflando artificialmente o PDR do OLSR,
+      // já que o denominador encolhe junto com os pacotes perdidos.
+      uint32_t tx = txAppCount[i], rx = 0, lost = 0;
       uint64_t rxBytes = 0;
       Time delaySum = Seconds (0), jitterSum = Seconds (0);
       Time tFirstTx = Seconds (0), tLastRx = Seconds (0);
@@ -507,9 +546,7 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
               t.destinationPort == port)
             {
               flowId = kv.first;
-              tx = kv.second.txPackets;
               rx = kv.second.rxPackets;
-              lost = kv.second.lostPackets;
               rxBytes = kv.second.rxBytes;
               delaySum = kv.second.delaySum;
               jitterSum = kv.second.jitterSum;
@@ -518,6 +555,7 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
               break;
             }
         }
+      lost = (tx > rx) ? (tx - rx) : 0;
 
       // PDR: percentual de pacotes transmitidos que chegaram ao destino.
       double pdrPct = (tx > 0) ? (100.0 * rx / tx) : 0.0;
@@ -587,7 +625,7 @@ main (int argc, char *argv[])
     }
 
   // ---- Etapas seguintes: uma matriz experimental completa por estágio ----
-  // (3 protocolos x 4 velocidades x 25 runs cada), uma a 20 nós (base) e
+  // (3 protocolos x 4 velocidades x 60 runs cada), uma a 20 nós (base) e
   // outra a 10 nós (extensão — variável experimental própria do grupo).
   const uint32_t totalPorEtapa =
       static_cast<uint32_t> (PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS);

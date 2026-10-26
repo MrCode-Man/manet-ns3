@@ -1,0 +1,15 @@
+==============================================================================
+RELATÓRIO DE VALIDAÇÃO
+==============================================================================
+
+INFORMAÇÕES:
+  - 2880 linhas lidas de /manet-ns3/data/raw/resultados_10n.csv
+  - execuções: 720 (esperado 720)
+
+AVISOS (2):
+  ! 208/2880 fluxos sem nenhuma recepção, por protocolo: {'AODV': 43, 'DSDV': 71, 'OLSR': 94}
+  ! 1 execuções com ZERO pacotes recebidos (todos os 4 fluxos).
+
+ERROS (0):
+
+RESULTADO: APROVADO

@@ -32,8 +32,8 @@ Trabalho Final de Redes Móveis (IFG, Câmpus Inhumas, 2026/2). Investiga como a
 | Distribuição inicial | uniforme em [0,500]² | `RandomRectanglePositionAllocator` |
 | Streams da mobilidade | fixados (`AssignStreams`) | Para o mesmo `run`, a topologia inicial e o movimento são idênticos nos 3 protocolos — a diferença nos resultados vem só do protocolo |
 | Fluxos UDP | fluxo *i*: nó *i* → nó (19−*i*), porta 9+*i*, 1024 B a cada 0,1 s | Determinístico e reproduzível |
-| Repetições por combinação | **25** (acima do mínimo de 5 exigido pelo enunciado) | Maior robustez estatística: médias e IC 95% mais estáveis entre protocolo×velocidade |
-| Escopo do XML do FlowMonitor | amostra: 1 arquivo por combinação protocolo×velocidade×estágio (`run = 1`), 24 arquivos no total — não as 600 execuções | Exportar o XML completo pesaria muito no repositório e deixaria a simulação mais lenta; a amostra já demonstra o uso do `SerializeToXmlFile` e serve de referência detalhada por combinação |
+| Repetições por combinação | **60** (acima do mínimo de 5 exigido pelo enunciado) | Maior robustez estatística: médias e IC 95% mais estáveis entre protocolo×velocidade |
+| Escopo do XML do FlowMonitor | amostra: 1 arquivo por combinação protocolo×velocidade×estágio (`run = 1`), 24 arquivos no total — não as 1440 execuções | Exportar o XML completo pesaria muito no repositório e deixaria a simulação mais lenta; a amostra já demonstra o uso do `SerializeToXmlFile` e serve de referência detalhada por combinação |
 | Variável de extensão | número de nós: **20** (base) vs **10** (extensão) — ver Seção 7 | Citada como exemplo válido pelo enunciado; reduzir os nós pela metade na mesma área muda diretamente a densidade/conectividade da rede, afetando como os protocolos descobrem e mantêm rotas |
 | Início do tráfego (warm-up) | 15 s | Um ciclo completo de atualização periódica do DSDV (15 s) e várias rodadas de HELLO/TC do OLSR (2 s/5 s); antes disso as tabelas de roteamento ainda não convergiram. O tempo total de simulação continua 120 s. O warm-up só define quando, dentro desses 120 s, o tráfego de dados começa |
 | Fim do tráfego | 118 s (2 s de folga) | Dá tempo de pacotes já enviados chegarem antes do fim |
@@ -84,7 +84,7 @@ cd manet-ns3
 bash scripts/run_batch.sh
 ```
 
-Isso sozinho cria o link simbólico de `src/manet-routing.cc` em `$NS3_DIR/scratch/`, compila, roda a simulação inteira — validação dos 3 protocolos + matriz-base (300 execuções, 20 nós) + extensão (300 execuções, 10 nós), 600 execuções no total — e copia `resultados_20n.csv` e `resultados_10n.csv` para `data/raw/`. Não é preciso editar nada nem passar nenhum parâmetro — tudo o que varia (protocolo, velocidade, run, nº de nós) já está definido dentro do `.cc`.
+Isso sozinho cria o link simbólico de `src/manet-routing.cc` em `$NS3_DIR/scratch/`, compila, roda a simulação inteira — validação dos 3 protocolos + matriz-base (720 execuções, 20 nós) + extensão (720 execuções, 10 nós), 1440 execuções no total — e copia `resultados_20n.csv` e `resultados_10n.csv` para `data/raw/`. Não é preciso editar nada nem passar nenhum parâmetro — tudo o que varia (protocolo, velocidade, run, nº de nós) já está definido dentro do `.cc`.
 
 Se preferir rodar manualmente, os mesmos passos são:
 
@@ -98,7 +98,7 @@ cd $NS3_DIR
 
 ### 4.1 Execução de um cenário único
 
-O programa **não aceita parâmetros de linha de comando** — o `CommandLine` em `main()` não registra nenhum `cmd.AddValue`, então `./ns3 run scratch/manet-routing` sempre executa os dois estágios inteiros (3 protocolos × 4 velocidades × 25 repetições = 300 execuções, a 20 nós e de novo a 10 nós) de uma vez; não há como rodar isoladamente uma única combinação a partir da linha de comando.
+O programa **não aceita parâmetros de linha de comando** — o `CommandLine` em `main()` não registra nenhum `cmd.AddValue`, então `./ns3 run scratch/manet-routing` sempre executa os dois estágios inteiros (3 protocolos × 4 velocidades × 60 repetições = 720 execuções, a 20 nós e de novo a 10 nós) de uma vez; não há como rodar isoladamente uma única combinação a partir da linha de comando.
 
 Para testar rapidamente um único caso (ex.: durante o desenvolvimento), o caminho é editar temporariamente as constantes `PROTOCOLS`, `SPEEDS`, `NUM_RUNS` e/ou a lista `STAGES` no topo de `src/manet-routing.cc` para conter só o que se quer testar, recompilar (`./ns3 build`) e rodar — desfazendo a alteração antes de gerar os dados finais da matriz completa.
 
@@ -106,13 +106,13 @@ Para testar rapidamente um único caso (ex.: durante o desenvolvimento), o camin
 
 **Etapa 1/3 — validação:** para cada protocolo, um checklist confirma que os nós foram criados, a mobilidade é `RandomWaypointMobilityModel`, o Wi-Fi está em modo Ad Hoc e o protocolo de roteamento **realmente instalado** em cada nó é o esperado. Um `[FALHA]` aqui indica um problema real de configuração — pare e investigue antes de seguir.
 
-**Etapa 2/3 — matriz-base (20 nós)** e **Etapa 3/3 — extensão (10 nós):** progresso `[n/300]` (reiniciado a cada estágio) e, ao final de cada execução, um resumo com o estágio entre colchetes (`[20n] ... PDR=...%` / `[10n] ... PDR=...%`) para acompanhar em tempo real.
+**Etapa 2/3 — matriz-base (20 nós)** e **Etapa 3/3 — extensão (10 nós):** progresso `[n/720]` (reiniciado a cada estágio) e, ao final de cada execução, um resumo com o estágio entre colchetes (`[20n] ... PDR=...%` / `[10n] ... PDR=...%`) para acompanhar em tempo real.
 
 Tudo isso é espelhado automaticamente em `data/raw/log.txt` (um `std::streambuf` duplica cada escrita em `std::cout` também para o arquivo, instalado uma vez no início de `main()`) — o log em arquivo é idêntico ao que aparece no terminal, sem precisar copiar/colar nada manualmente.
 
 ### 4.3 Saída
 
-Um CSV por estágio, cada um com 1200 linhas de dados (300 execuções × 4 fluxos):
+Um CSV por estágio, cada um com 2880 linhas de dados (720 execuções × 4 fluxos):
 
 | Estágio | Arquivo | Nós |
 |---|---|---|
@@ -137,7 +137,7 @@ Além dos CSVs, a simulação grava mais dois tipos de saída em `data/raw/`:
 | Saída | Caminho | Conteúdo |
 |---|---|---|
 | Log completo | `data/raw/log.txt` | Cópia em arquivo de tudo que aparece no console (Seção 4.2), os dois estágios |
-| XML do FlowMonitor (amostra) | `data/raw/flowmon/flowmon_<protocolo>_speed<velocidade>_<tag>.xml` | 24 arquivos (`<tag>` = `20n` ou `10n`) — `SerializeToXmlFile` chamado só para `run = 1` de cada combinação protocolo×velocidade×estágio (ver "Decisões do grupo", Seção 1, para a justificativa de não exportar as 600 execuções) |
+| XML do FlowMonitor (amostra) | `data/raw/flowmon/flowmon_<protocolo>_speed<velocidade>_<tag>.xml` | 24 arquivos (`<tag>` = `20n` ou `10n`) — `SerializeToXmlFile` chamado só para `run = 1` de cada combinação protocolo×velocidade×estágio (ver "Decisões do grupo", Seção 1, para a justificativa de não exportar as 1440 execuções) |
 
 ## 5. Análise em Python
 
@@ -151,7 +151,7 @@ Por padrão processa os dois estágios: `data/raw/resultados_20n.csv` (base) e `
 
 O script só gera tabelas e gráficos de um estágio se o CSV correspondente passar na validação; caso contrário, é necessário corrigir o problema e executar novamente. Os dois estágios são validados de forma independente (a base pode ter sucesso mesmo que a extensão falhe, e vice-versa).
 
-São verificadas as seguintes condições, em cada CSV: colunas presentes; valores numéricos; protocolos ∈ {AODV, OLSR, DSDV}; velocidades ∈ {1, 5, 10, 20}; exatamente 4 linhas (fluxos) por execução; as 300 execuções completas; 25 repetições por combinação protocolo×velocidade; `rx ≤ tx`; PDR em [0,100]; `rx = 0` implica delay/jitter/throughput = 0, mantendo consistência com o `.cc`.
+São verificadas as seguintes condições, em cada CSV: colunas presentes; valores numéricos; protocolos ∈ {AODV, OLSR, DSDV}; velocidades ∈ {1, 5, 10, 20}; exatamente 4 linhas (fluxos) por execução; as 720 execuções completas; 60 repetições por combinação protocolo×velocidade; `rx ≤ tx`; PDR em [0,100]; `rx = 0` implica delay/jitter/throughput = 0, mantendo consistência com o `.cc`.
 
 O relatório completo de cada estágio é salvo em `data/processed/validation_report_<tag>.txt` (`<tag>` = `20n` ou `10n`).
 
@@ -169,7 +169,7 @@ A mesma regra é utilizada para todas as combinações:
 
 ### 5.3 Estatística
 
-Para cada (protocolo, velocidade), em cada estágio, sobre as 25 repetições: média, desvio padrão amostral e IC de 95% (t de Student, 24 graus de liberdade). Com `scipy` instalado, o t crítico exato é calculado (`stats.t.ppf`, t ≈ 2,064); sem `scipy`, o script usa uma tabela de fallback que só cobre g.l. de 1 a 9 — para 24 g.l. ela cai no valor padrão `1,960` (aproximação normal), levemente mais otimista que o t exato. Para IC preciso com 25 repetições, instale `scipy`. Barras de erro dos gráficos = meia-largura do IC 95% (use `--errorbars std` para desvio padrão em vez de IC).
+Para cada (protocolo, velocidade), em cada estágio, sobre as 60 repetições: média, desvio padrão amostral e IC de 95% (t de Student, 59 graus de liberdade). Com `scipy` instalado, o t crítico exato é calculado (`stats.t.ppf`, t ≈ 2,001); sem `scipy`, o script usa uma tabela de fallback que só cobre g.l. de 1 a 9 — para 59 g.l. ela cai no valor padrão `1,960` (aproximação normal), levemente mais otimista que o t exato. Para IC preciso com 60 repetições, instale `scipy`. Barras de erro dos gráficos = meia-largura do IC 95% (use `--errorbars std` para desvio padrão em vez de IC).
 
 ### 5.4 Saídas
 
@@ -184,7 +184,7 @@ Por estágio (`<tag>` = `20n` ou `10n`):
 | `figures/throughput_vs_speed_<tag>.{png,pdf}` | **Gráfico 2** — throughput × velocidade |
 | `figures/delay_vs_speed_<tag>.{png,pdf}` | **Gráfico 3** — atraso médio × velocidade |
 | `figures/jitter_vs_speed_<tag>.{png,pdf}` | **Gráfico 4** — jitter médio × velocidade |
-| `figures/boxplot_<metrica>_<tag>.png` | dispersão das 25 repetições (suplementar) |
+| `figures/boxplot_<metrica>_<tag>.png` | dispersão das 60 repetições (suplementar) |
 
 Comparação entre estágios (só gerada se os dois CSVs existirem e passarem na validação):
 
@@ -199,7 +199,7 @@ Todos os gráficos têm eixo X e Y com unidade, legenda com protocolo (e, nos de
 
 ## 6. Reprodutibilidade
 
-* Seed mestre fixa (12345) e `run` = 1..25, ambos usados em `RngSeedManager::SetSeed/SetRun` a cada execução — nos dois estágios (20n e 10n).
+* Seed mestre fixa (12345) e `run` = 1..60, ambos usados em `RngSeedManager::SetSeed/SetRun` a cada execução — nos dois estágios (20n e 10n).
 * `AssignStreams` garante que, para o mesmo `run`, a topologia inicial e o movimento são idênticos nos 3 protocolos — a diferença observada vem do protocolo, não da aleatoriedade da topologia (dentro de um mesmo estágio; a topologia em si muda entre 20n e 10n, pois o número de nós é justamente a variável manipulada).
 * Rodar `bash scripts/run_batch.sh` novamente, com o mesmo `.cc`, reproduz os mesmos números nos dois estágios.
 
@@ -209,7 +209,7 @@ Todos os gráficos têm eixo X e Y com unidade, legenda com protocolo (e, nos de
 
 ## 7. Extensão: número de nós (20 vs 10)
 
-O enunciado pede uma terceira variável experimental além de protocolo e velocidade (nº de nós, área, fluxos, taxa, pause time ou tamanho do pacote). O grupo escolheu **número de nós**: a matriz-base usa 20 nós; a extensão repete a **mesma matriz completa** (3 protocolos × 4 velocidades × 25 repetições = 300 execuções) com **10 nós**, na mesma área de 500×500 m — ou seja, a extensão também reduz a densidade da rede, o que é esperado afetar a conectividade e, por consequência, o desempenho de cada protocolo de roteamento.
+O enunciado pede uma terceira variável experimental além de protocolo e velocidade (nº de nós, área, fluxos, taxa, pause time ou tamanho do pacote). O grupo escolheu **número de nós**: a matriz-base usa 20 nós; a extensão repete a **mesma matriz completa** (3 protocolos × 4 velocidades × 60 repetições = 720 execuções) com **10 nós**, na mesma área de 500×500 m — ou seja, a extensão também reduz a densidade da rede, o que é esperado afetar a conectividade e, por consequência, o desempenho de cada protocolo de roteamento.
 
 **Separação da matriz-base:** a extensão é um segundo estágio independente dentro do mesmo programa (`src/manet-routing.cc`, `std::vector<Stage> STAGES`), com seu próprio CSV (`resultados_10n.csv`), sua própria amostra de XML e suas próprias linhas de progresso no log — nada na matriz-base (`resultados_20n.csv`, já existente) é alterado ou misturado com os dados da extensão.
 
@@ -223,7 +223,7 @@ O enunciado pede uma terceira variável experimental além de protocolo e veloci
 |---|---|---|
 | `NS3_DIR ... esta correto?` | variável não definida | `export NS3_DIR=/caminho/do/ns-3` |
 | Erro de compilação | módulo do ns-3 faltando ou versão incompatível | confira se `aodv`, `olsr`, `dsdv`, `flow-monitor`, `wifi`, `mobility` estão habilitados no build |
-| `analyze.py` reprova com "execuções ausentes" | a simulação não rodou as 300 execuções completas de algum estágio (interrompida no meio, ou os 2 estágios de 600 execuções ainda não terminaram) | rode `bash scripts/run_batch.sh` de novo (ou espere terminar — são 600 execuções no total, 2x o tempo de rodar só a base) |
+| `analyze.py` reprova com "execuções ausentes" | a simulação não rodou as 720 execuções completas de algum estágio (interrompida no meio, ou os 2 estágios de 1440 execuções ainda não terminaram) | rode `bash scripts/run_batch.sh` de novo (ou espere terminar — são 1440 execuções no total, 2x o tempo de rodar só a base) |
 | PDR muito baixo em muitas execuções | pode ser esperado (mobilidade alta particiona a rede) ou sinal de problema de alcance do rádio | compare entre velocidades: PDR caindo conforme a velocidade sobe pode ocorrer; PDR ≈ 0% em quase tudo, mesmo a 1 m/s, é suspeito |
 
 ## 9. Tutorial de reprodução completa (do zero à rastreabilidade)
@@ -268,7 +268,7 @@ pip install pandas numpy matplotlib scipy            # dependências Python (Se�
 bash scripts/run_batch.sh
 ```
 
-Isso cria o link do `.cc` dentro do ns-3, compila (`./ns3 build`) e roda os dois estágios completos — matriz-base (300 execuções, 20 nós) e extensão (300 execuções, 10 nós), 600 no total — ver Seção 4 para os comandos manuais equivalentes, e a Seção 4.1 para como testar um único cenário (o programa não aceita parâmetros de linha de comando, então "um cenário" exige editar constantes no `.cc`, como explicado lá).
+Isso cria o link do `.cc` dentro do ns-3, compila (`./ns3 build`) e roda os dois estágios completos — matriz-base (720 execuções, 20 nós) e extensão (720 execuções, 10 nós), 1440 no total — ver Seção 4 para os comandos manuais equivalentes, e a Seção 4.1 para como testar um único cenário (o programa não aceita parâmetros de linha de comando, então "um cenário" exige editar constantes no `.cc`, como explicado lá).
 
 ### 9.4 Parâmetros usados
 
@@ -276,11 +276,11 @@ Nenhum parâmetro é passado em tempo de execução — tudo o que varia (protoc
 
 ### 9.5 Aleatoriedade e política de repetição
 
-Seed mestre fixa (`12345`) e `run` de 1 a 25 — uma repetição independente por `run`, mesma seed mestre, nos dois estágios (Seção 6). Rodar `bash scripts/run_batch.sh` de novo, sem alterar o `.cc`, reproduz exatamente os mesmos números.
+Seed mestre fixa (`12345`) e `run` de 1 a 60 — uma repetição independente por `run`, mesma seed mestre, nos dois estágios (Seção 6). Rodar `bash scripts/run_batch.sh` de novo, sem alterar o `.cc`, reproduz exatamente os mesmos números.
 
 ### 9.6 Onde as saídas ficam
 
-`data/raw/resultados_20n.csv` e `data/raw/resultados_10n.csv` (1200 linhas cada, 300 execuções × 4 fluxos) têm os dados completos da matriz-base e da extensão, respectivamente. Além deles, `data/raw/log.txt` tem o log completo da execução (espelho do console, os dois estágios) e `data/raw/flowmon/` tem uma amostra de 24 XMLs do FlowMonitor — 1 por combinação protocolo×velocidade×estágio, `run = 1` (detalhes na Seção 4.3).
+`data/raw/resultados_20n.csv` e `data/raw/resultados_10n.csv` (2880 linhas cada, 720 execuções × 4 fluxos) têm os dados completos da matriz-base e da extensão, respectivamente. Além deles, `data/raw/log.txt` tem o log completo da execução (espelho do console, os dois estágios) e `data/raw/flowmon/` tem uma amostra de 24 XMLs do FlowMonitor — 1 por combinação protocolo×velocidade×estágio, `run = 1` (detalhes na Seção 4.3).
 
 ### 9.7 Gerar tabelas, estatística e gráficos (análise)
 
