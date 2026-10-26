@@ -156,7 +156,7 @@ static const uint32_t MASTER_SEED = 12345; // seed usada em todas as execuções
 
 static const std::vector<std::string> PROTOCOLS = {"aodv", "olsr", "dsdv"}; // protocolos comparados
 static const std::vector<double>      SPEEDS    = {1.0, 5.0, 10.0, 20.0};   // velocidades testadas (m/s)
-static const uint32_t                 NUM_RUNS  = 60; // repetições independentes por combinação
+static const uint32_t                 NUM_RUNS  = 5;  // TESTE: 5 repetições (valor final do trabalho: 60)
 
 // ---- Parâmetros auxiliares do cenário (ver "Notas de implementação" acima) ----
 static const double      PAUSE_S       = 1.0;    // tempo parado em cada waypoint do RandomWaypoint

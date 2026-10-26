@@ -67,6 +67,11 @@ backup_old_outputs "$PROJECT_DIR/data/raw"
 backup_old_outputs "$PROJECT_DIR/data/processed"
 backup_old_outputs "$PROJECT_DIR/figures"
 
+# Numero de repeticoes lido do proprio .cc (fonte unica da verdade), para o
+# analyze.py validar e rotular os graficos com o mesmo valor.
+NUM_RUNS=$(grep -oP 'NUM_RUNS\s*=\s*\K[0-9]+' "$PROJECT_DIR/src/manet-routing.cc" | head -1)
+LINHAS_ESPERADAS=$((3 * 4 * NUM_RUNS * 4)) # protocolos x velocidades x repeticoes x 4 fluxos
+
 echo ">> Ligando src/manet-routing.cc a $NS3_DIR/scratch/ (symlink)"
 # Link simbolico em vez de copia: o arquivo dentro do scratch/ do ns-3 passa a
 # ser literalmente o mesmo arquivo do repositorio (nao uma copia desatualizavel).
@@ -84,7 +89,7 @@ echo ">> Compilando (./ns3 build manet-routing)..."
 (cd "$NS3_DIR" && ./ns3 build manet-routing)
 
 echo ">> Rodando a simulacao (validacao + ETAPA 2/3 base 20 nos + ETAPA 3/3 extensao 10 nos)."
-echo ">> Isso demora bastante (25 repeticoes x 2 estagios); o progresso [n/300]"
+echo ">> Isso demora bastante ($NUM_RUNS repeticoes x 2 estagios); o progresso [n/$((3 * 4 * NUM_RUNS))]"
 echo ">> aparece no terminal para cada estagio separadamente."
 (cd "$NS3_DIR" && ./ns3 run scratch/manet-routing)
 
@@ -128,10 +133,10 @@ fi
 LINHAS_20N=$(($(wc -l <"$PROJECT_DIR/data/raw/resultados_20n.csv") - 1))
 LINHAS_10N=$(($(wc -l <"$PROJECT_DIR/data/raw/resultados_10n.csv") - 1))
 echo ">> Resultados copiados para $PROJECT_DIR/data/raw/:"
-echo "   - resultados_20n.csv ($LINHAS_20N linhas de dados; esperado 1200) — matriz-base"
-echo "   - resultados_10n.csv ($LINHAS_10N linhas de dados; esperado 1200) — extensao"
+echo "   - resultados_20n.csv ($LINHAS_20N linhas de dados; esperado $LINHAS_ESPERADAS) — matriz-base"
+echo "   - resultados_10n.csv ($LINHAS_10N linhas de dados; esperado $LINHAS_ESPERADAS) — extensao"
 echo "   - log.txt (log completo da execucao, os dois estagios)"
 echo "   - flowmon/ (amostra de XML do FlowMonitor, 1 por combinacao protocolo x velocidade x estagio)"
 
-echo ">> Gerando graficos e tabelas (python3 scripts/analyze.py)..."
-(cd "$PROJECT_DIR" && python3 scripts/analyze.py)
+echo ">> Gerando graficos e tabelas (python3 scripts/analyze.py --expected-runs "$NUM_RUNS")..."
+(cd "$PROJECT_DIR" && python3 scripts/analyze.py --expected-runs "$NUM_RUNS")

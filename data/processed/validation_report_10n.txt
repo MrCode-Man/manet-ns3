@@ -3,12 +3,11 @@ RELATÓRIO DE VALIDAÇÃO
 ==============================================================================
 
 INFORMAÇÕES:
-  - 2880 linhas lidas de /home/gabriel/manet-ns3/data/raw/resultados_10n.csv
-  - execuções: 720 (esperado 720)
+  - 240 linhas lidas de /home/gabriel/manet-ns3/data/raw/resultados_10n.csv
+  - execuções: 60 (esperado 60)
 
-AVISOS (2):
-  ! 208/2880 fluxos sem nenhuma recepção, por protocolo: {'AODV': 43, 'DSDV': 71, 'OLSR': 94}
-  ! 1 execuções com ZERO pacotes recebidos (todos os 4 fluxos).
+AVISOS (1):
+  ! 21/240 fluxos sem nenhuma recepção, por protocolo: {'AODV': 5, 'DSDV': 6, 'OLSR': 10}
 
 ERROS (0):
 
