@@ -26,13 +26,22 @@ Saídas (por estágio, <tag> = 20n ou 10n):
     figures/<metrica>_vs_speed_<tag>.png/.pdf 4 gráficos obrigatórios
     figures/boxplot_<metrica>_<tag>.png       dispersão das 60 repetições
 
+    data/processed/descriptive_<tag>.csv      média, mediana, desvio, IQR, CV, assimetria,
+                                              nº de pontos além de 1,5xIQR (só informativo:
+                                              nada é removido dos dados)
+    data/processed/stats_tests_<tag>.csv      Shapiro-Wilk, Levene, Kruskal-Wallis entre
+                                              protocolos e entre velocidades, e comparações
+                                              par a par (Mann-Whitney, correção de Holm)
+
 Saídas de comparação (só se os dois estágios tiverem dados válidos):
     figures/<metrica>_nodes_comparison.png/.pdf  20 vs 10 nós, por protocolo
+    data/processed/stats_nodes_comparison.csv    Mann-Whitney 20 vs 10 nós, por protocolo x velocidade
 
 Uso:
     python3 scripts/analyze.py                      # defaults: resultados_20n.csv / resultados_10n.csv
     python3 scripts/analyze.py --raw outro/caminho.csv --raw-ext outro/extensao.csv
     python3 scripts/analyze.py --errorbars std       # barras de erro = desvio padrão em vez de IC 95%
+    python3 scripts/analyze.py --expected-runs 5     # análise de uma rodada de teste com 5 repetições
 """
 
 from __future__ import annotations
@@ -42,9 +51,13 @@ import sys
 from pathlib import Path
 from typing import cast
 
+import itertools
+import textwrap
+
 import matplotlib
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -53,7 +66,8 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parent.parent  # raiz do projeto (manet-ns3/)
 PROTOCOLS = ["AODV", "OLSR", "DSDV"]
 SPEEDS = [1.0, 5.0, 10.0, 20.0]
-EXPECTED_RUNS = 60
+EXPECTED_RUNS = 60  # sobrescrito por --expected-runs (precisa bater com NUM_RUNS do .cc)
+ALPHA = 0.05
 FLOWS_PER_RUN = 4
 COLORS = {"AODV": "#1f77b4", "OLSR": "#d62728", "DSDV": "#2ca02c"}
 MARKERS = {"AODV": "o", "OLSR": "s", "DSDV": "^"}
@@ -103,9 +117,8 @@ def col(df: pd.DataFrame, name: str) -> pd.Series:
 def t_critical(dof: int) -> float:
     """Valor crítico t de Student bicaudal, para o nível de confiança CONFIDENCE."""
     try:
-        from scipy import stats  # type: ignore
         return float(stats.t.ppf(0.5 + CONFIDENCE / 2.0, dof))
-    except ImportError:
+    except Exception:
         return T95.get(dof, 1.960)
 
 
@@ -261,11 +274,16 @@ def load_and_validate(path: Path, rep: Report) -> pd.DataFrame | None:
 #                                    vazão agregada da execução)
 #   Delay médio (ms)              : média de delayMs PONDERADA por rxPackets
 #                                    de cada fluxo (fluxo que recebeu mais
-#                                    pacotes pesa mais na média); 0 se nenhum
+#                                    pacotes pesa mais na média); indefinido se nenhum
 #                                    fluxo recebeu pacote
 #   Jitter médio (ms)             : média de jitterMs ponderada por
-#                                    max(rxPackets-1, 0) de cada fluxo; 0 se
-#                                    o denominador for 0
+#                                    max(rxPackets-1, 0) de cada fluxo
+#
+# Delay e jitter de uma execução sem NENHUM pacote recebido (ou, no jitter,
+# sem pelo menos 2 pacotes num mesmo fluxo) são INDEFINIDOS, não zero: o .cc
+# grava 0 só como placeholder. Aqui viram NaN e ficam de fora da média dessa
+# métrica (PDR e throughput dessa execução continuam valendo 0, que aí é um
+# valor real).
 # ------------------------------------------------------------------------------
 def aggregate_runs(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
@@ -279,10 +297,10 @@ def aggregate_runs(df: pd.DataFrame) -> pd.DataFrame:
         throughput = float(g["throughputMbps"].sum())
 
         peso_delay = g["rxPackets"]
-        delay = float((g["delayMs"] * peso_delay).sum() / peso_delay.sum()) if peso_delay.sum() > 0 else 0.0
+        delay = float((g["delayMs"] * peso_delay).sum() / peso_delay.sum()) if peso_delay.sum() > 0 else np.nan
 
         peso_jitter = (g["rxPackets"] - 1).clip(lower=0)
-        jitter = float((g["jitterMs"] * peso_jitter).sum() / peso_jitter.sum()) if peso_jitter.sum() > 0 else 0.0
+        jitter = float((g["jitterMs"] * peso_jitter).sum() / peso_jitter.sum()) if peso_jitter.sum() > 0 else np.nan
 
         rows.append({"protocol": proto, "speed": float(speed), "run": int(run),
                      "txPackets": tx, "rxPackets": rx, "lostPackets": lost, "rxBytes": rx_bytes,
@@ -309,10 +327,179 @@ def summarize(per_run: pd.DataFrame) -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------------------
+# Estatística descritiva e testes de hipótese
+#
+# Nada aqui remove dados: os pontos além de 1,5xIQR são só CONTADOS (para
+# saber se a média está sendo puxada por poucos valores extremos), e todas as
+# execuções continuam entrando em médias, ICs e testes.
+#
+# Por que Kruskal-Wallis / Mann-Whitney (e não ANOVA / t): delay e jitter são
+# assimétricos (cauda longa), e o Shapiro-Wilk de cada célula está no CSV de
+# testes para conferir. Os testes por postos não assumem normalidade e não
+# são afetados por poucos valores extremos. Levene (mediana) checa a
+# homogeneidade de variâncias entre protocolos.
+# ------------------------------------------------------------------------------
+def holm(pvals: list[float]) -> list[float]:
+    """Correção de Holm (controla o erro tipo I familiar nas comparações par a par)."""
+    m = len(pvals)
+    ordem = np.argsort(pvals)
+    ajustado = np.empty(m)
+    maximo = 0.0
+    for rank, i in enumerate(ordem):
+        maximo = max(maximo, (m - rank) * pvals[i])
+        ajustado[i] = min(1.0, maximo)
+    return ajustado.tolist()
+
+
+def cliffs_delta(a: np.ndarray, b: np.ndarray) -> float:
+    """Tamanho de efeito de Cliff: P(a>b) - P(a<b), em [-1, 1]."""
+    u = stats.mannwhitneyu(a, b, alternative="two-sided").statistic
+    return float(2.0 * u / (a.size * b.size) - 1.0)
+
+
+def significance_stars(p: float) -> str:
+    return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < ALPHA else ""
+
+
+def _values(per_run: pd.DataFrame, metric: str, **filtros) -> np.ndarray:
+    d = per_run
+    for k, v in filtros.items():
+        d = d[d[k] == v]
+    return d[metric].dropna().to_numpy(dtype=float)
+
+
+def descriptive(per_run: pd.DataFrame) -> pd.DataFrame:
+    """Uma linha por (protocolo, velocidade, métrica) com estatística descritiva completa."""
+    rows = []
+    for proto in PROTOCOLS:
+        for speed in SPEEDS:
+            for m in METRICS:
+                v = _values(per_run, m, protocol=proto, speed=speed)
+                if v.size == 0:
+                    continue
+                q1, med, q3 = np.percentile(v, [25, 50, 75])
+                iqr = q3 - q1
+                fora = int(((v < q1 - 1.5 * iqr) | (v > q3 + 1.5 * iqr)).sum())
+                std = float(v.std(ddof=1)) if v.size > 1 else np.nan
+                rows.append({"protocol": proto, "speed": speed, "metric": m, "n": int(v.size),
+                             "mean": float(v.mean()), "median": float(med), "std": std,
+                             "cv_pct": 100.0 * std / v.mean() if v.mean() else np.nan,
+                             "q1": float(q1), "q3": float(q3), "iqr": float(iqr),
+                             "min": float(v.min()), "max": float(v.max()),
+                             "skewness": float(stats.skew(v, bias=False)) if v.size > 2 else np.nan,
+                             "n_beyond_1.5iqr": fora})
+    return pd.DataFrame(rows)
+
+
+def run_tests(per_run: pd.DataFrame) -> pd.DataFrame:
+    """
+    Formato longo: metric, test, group, statistic, p_value, p_adjusted, effect_size, significant.
+      shapiro_wilk   : normalidade de cada (protocolo, velocidade)
+      levene         : homogeneidade de variâncias entre protocolos, por velocidade
+      kruskal_wallis : diferença entre protocolos, por velocidade (efeito = epsilon²)
+                       e diferença entre velocidades, por protocolo
+      mann_whitney   : pares de protocolos por velocidade, p ajustado por Holm
+                       (efeito = delta de Cliff)
+    """
+    rows = []
+
+    def add(metric, test, group, stat, p, p_adj=np.nan, effect=np.nan):
+        p_dec = p if np.isnan(p_adj) else p_adj
+        rows.append({"metric": metric, "test": test, "group": group, "statistic": stat,
+                     "p_value": p, "p_adjusted": p_adj, "effect_size": effect,
+                     "significant": bool(p_dec < ALPHA)})
+
+    for m in METRICS:
+        for proto in PROTOCOLS:
+            for speed in SPEEDS:
+                v = _values(per_run, m, protocol=proto, speed=speed)
+                if v.size >= 3 and np.ptp(v) > 0:
+                    r = stats.shapiro(v)
+                    add(m, "shapiro_wilk", f"{proto} @ {speed:g} m/s", float(r.statistic), float(r.pvalue))
+        for speed in SPEEDS:
+            grupos = {pr: _values(per_run, m, protocol=pr, speed=speed) for pr in PROTOCOLS}
+            validos = [g for g in grupos.values() if g.size >= 2]
+            if len(validos) >= 2:
+                r = stats.levene(*validos, center="median")
+                add(m, "levene", f"protocolos @ {speed:g} m/s", float(r.statistic), float(r.pvalue))
+                h = stats.kruskal(*validos)
+                n_tot = sum(g.size for g in validos)
+                add(m, "kruskal_wallis", f"protocolos @ {speed:g} m/s", float(h.statistic),
+                    float(h.pvalue), effect=float(h.statistic / (n_tot - 1)))
+            pares = [(a, b) for a, b in itertools.combinations(PROTOCOLS, 2)
+                     if grupos[a].size and grupos[b].size]
+            ps = [float(stats.mannwhitneyu(grupos[a], grupos[b], alternative="two-sided").pvalue)
+                  for a, b in pares]
+            for (a, b), pv, pa in zip(pares, ps, holm(ps) if ps else []):
+                u = stats.mannwhitneyu(grupos[a], grupos[b], alternative="two-sided")
+                add(m, "mann_whitney", f"{a} vs {b} @ {speed:g} m/s", float(u.statistic), pv, pa,
+                    cliffs_delta(grupos[a], grupos[b]))
+        for proto in PROTOCOLS:
+            grupos = [_values(per_run, m, protocol=proto, speed=sp) for sp in SPEEDS]
+            grupos = [g for g in grupos if g.size >= 2]
+            if len(grupos) >= 2:
+                h = stats.kruskal(*grupos)
+                n_tot = sum(g.size for g in grupos)
+                add(m, "kruskal_wallis", f"velocidades ({proto})", float(h.statistic),
+                    float(h.pvalue), effect=float(h.statistic / (n_tot - 1)))
+    return pd.DataFrame(rows)
+
+
+def run_nodes_tests(per_run_20n: pd.DataFrame, per_run_10n: pd.DataFrame) -> pd.DataFrame:
+    """Mann-Whitney 20 vs 10 nós, por (métrica, protocolo, velocidade); Holm dentro de cada métrica."""
+    rows = []
+    for m in METRICS:
+        bloco = []
+        for proto in PROTOCOLS:
+            for speed in SPEEDS:
+                a = _values(per_run_20n, m, protocol=proto, speed=speed)
+                b = _values(per_run_10n, m, protocol=proto, speed=speed)
+                if a.size and b.size:
+                    u = stats.mannwhitneyu(a, b, alternative="two-sided")
+                    bloco.append({"metric": m, "protocol": proto, "speed": speed,
+                                  "statistic": float(u.statistic), "p_value": float(u.pvalue),
+                                  "cliffs_delta_20n_vs_10n": cliffs_delta(a, b)})
+        for r, pa in zip(bloco, holm([r["p_value"] for r in bloco]) if bloco else []):
+            r["p_adjusted"] = pa
+            r["significant"] = bool(pa < ALPHA)
+        rows += bloco
+    return pd.DataFrame(rows)
+
+
+def kruskal_stars(tests: pd.DataFrame, metric: str) -> dict[float, str]:
+    """Estrelas de significância (Kruskal-Wallis entre protocolos) por velocidade, para anotar os gráficos."""
+    out = {}
+    sel = tests[(tests["metric"] == metric) & (tests["test"] == "kruskal_wallis")]
+    for speed in SPEEDS:
+        r = sel[sel["group"] == f"protocolos @ {speed:g} m/s"]
+        if len(r):
+            out[speed] = significance_stars(float(r["p_value"].iloc[0]))
+    return out
+
+
+def stars_legend() -> str:
+    return (f"* p<0,05  ** p<0,01  *** p<0,001: protocolos diferem naquela velocidade "
+            f"(Kruskal-Wallis); sem marca = diferença não significativa")
+
+
+def caption(texto: str, largura: int) -> str:
+    """Quebra a legenda em linhas de no máximo `largura` caracteres (preserva os \\n existentes)."""
+    return "\n".join(textwrap.fill(l, largura) for l in texto.split("\n"))
+
+
+def annotate_stars(ax, stars: dict[float, str]) -> None:
+    """Escreve as estrelas no topo do gráfico, acima de cada velocidade."""
+    for speed, st in stars.items():
+        if st:
+            ax.annotate(st, xy=(speed, 1.0), xycoords=("data", "axes fraction"), ha="center",
+                        va="bottom", fontsize=14, fontweight="bold", color="black")
+
+
+# ------------------------------------------------------------------------------
 # Gráficos
 # ------------------------------------------------------------------------------
 def plot_metric(summary: pd.DataFrame, metric: str, errorbars: str, figures_dir: Path,
-                 tag: str) -> list[Path]:
+                 tag: str, tests: pd.DataFrame) -> list[Path]:
     """
     Gráfico de linha de uma métrica em função da velocidade, com uma série
     por protocolo e barras de erro (IC 95% por padrão, ou desvio padrão se
@@ -336,16 +523,19 @@ def plot_metric(summary: pd.DataFrame, metric: str, errorbars: str, figures_dir:
 
     ax.set_xlabel("Velocidade dos nós (m/s)")
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(title, pad=22)
     ax.set_xticks(SPEEDS)
     if metric == "pdrPct":
         ax.set_ylim(0, 100)  # PDR é um percentual: eixo sempre fixo em [0,100]
     else:
         ax.set_ylim(bottom=0)
     ax.legend(title="Protocolo")
-    ax.text(0.99, 0.01, f"média ± {'IC 95%' if errorbars == 'ci' else 'desvio padrão'} "
-                        f"({EXPECTED_RUNS} repetições)", transform=ax.transAxes,
-            ha="right", va="bottom", fontsize=8, color="gray")
+    annotate_stars(ax, kruskal_stars(tests, metric))
+    ax.annotate(caption(f"Pontos: média de {EXPECTED_RUNS} repetições por velocidade; barras: "
+                        f"{'IC 95% (t de Student)' if errorbars == 'ci' else 'desvio padrão'}. "
+                        f"Nenhuma execução foi removida.\n{stars_legend()}", 100),
+                xy=(0.0, -0.15), xycoords="axes fraction", ha="left", va="top", fontsize=8,
+                color="dimgray")
 
     paths = []
     for ext in ("png", "pdf"):
@@ -356,7 +546,8 @@ def plot_metric(summary: pd.DataFrame, metric: str, errorbars: str, figures_dir:
     return paths
 
 
-def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path, tag: str) -> Path:
+def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path, tag: str,
+                   tests: pd.DataFrame) -> Path:
     """
     Boxplot de uma métrica por velocidade, com os 3 protocolos lado a lado em
     cada posição. Diferente do gráfico de linha (que só mostra média ± erro),
@@ -371,7 +562,7 @@ def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path, tag: s
 
     for i, proto in enumerate(PROTOCOLS):
         sub = per_run[per_run["protocol"] == proto]
-        valores = [sub.loc[sub["speed"] == s, metric].values for s in SPEEDS]
+        valores = [sub.loc[sub["speed"] == s, metric].dropna().values for s in SPEEDS]
         pos = pos_base + (i - 1) * largura
         bp = ax.boxplot(valores, positions=pos, widths=largura * 0.9, patch_artist=True,
                         manage_ticks=False)
@@ -385,10 +576,19 @@ def boxplot_metric(per_run: pd.DataFrame, metric: str, figures_dir: Path, tag: s
     ax.set_xticklabels([f"{s:g}" for s in SPEEDS])
     ax.set_xlabel("Velocidade dos nós (m/s)")
     ax.set_ylabel(ylabel)
-    ax.set_title(f"{title} — dispersão entre as {EXPECTED_RUNS} repetições")
+    ax.set_title(f"{title} — dispersão entre as {EXPECTED_RUNS} repetições", pad=22)
     # boxplot não gera legenda automática por cor; montamos uma manualmente
     handles = [plt.Rectangle((0, 0), 1, 1, facecolor=COLORS[p], alpha=0.6, label=p) for p in PROTOCOLS]
     ax.legend(handles=handles, title="Protocolo")
+    for speed, st in kruskal_stars(tests, metric).items():
+        if st:
+            ax.annotate(st, xy=(SPEEDS.index(speed), 1.0), xycoords=("data", "axes fraction"),
+                        ha="center", va="bottom", fontsize=14, fontweight="bold")
+    ax.annotate(caption("Caixa: Q1–Q3 (50% central) · linha preta: mediana · bigodes: até 1,5×IQR · "
+                        "círculos: valores além dos bigodes (mantidos nos dados e nas médias).\n"
+                        + stars_legend(), 125),
+                xy=(0.0, -0.13), xycoords="axes fraction", ha="left", va="top", fontsize=8,
+                color="dimgray")
 
     p = figures_dir / f"boxplot_{suffix}_{tag}.png"
     fig.savefig(p, bbox_inches="tight")
@@ -421,16 +621,19 @@ def plot_nodes_comparison(summary_20n: pd.DataFrame, summary_10n: pd.DataFrame, 
 
     ax.set_xlabel("Velocidade dos nós (m/s)")
     ax.set_ylabel(ylabel)
-    ax.set_title(f"{title} — efeito do número de nós (20 vs 10)")
+    ax.set_title(f"{title} — efeito do número de nós (20 vs 10)", pad=22)
     ax.set_xticks(SPEEDS)
     if metric == "pdrPct":
         ax.set_ylim(0, 100)
     else:
         ax.set_ylim(bottom=0)
     ax.legend(title="Protocolo (nós)", fontsize=9, ncol=2)
-    ax.text(0.99, 0.01, f"média ± {'IC 95%' if errorbars == 'ci' else 'desvio padrão'} "
-                        f"({EXPECTED_RUNS} repetições)", transform=ax.transAxes,
-            ha="right", va="bottom", fontsize=8, color="gray")
+    ax.annotate(caption(f"Pontos: média de {EXPECTED_RUNS} repetições por velocidade; barras: "
+                        f"{'IC 95% (t de Student)' if errorbars == 'ci' else 'desvio padrão'}. "
+                        "Nenhuma execução foi removida.\nTeste 20 vs 10 nós por protocolo e velocidade: "
+                        "stats_nodes_comparison.csv (Mann-Whitney, Holm).", 105),
+                xy=(0.0, -0.15), xycoords="axes fraction", ha="left", va="top", fontsize=8,
+                color="dimgray")
 
     paths = []
     for ext in ("png", "pdf"):
@@ -443,11 +646,11 @@ def plot_nodes_comparison(summary_20n: pd.DataFrame, summary_10n: pd.DataFrame, 
 
 # ------------------------------------------------------------------------------
 def run_pipeline(raw_path: Path, tag: str, label: str, processed_dir: Path, figures_dir: Path,
-                  errorbars: str, force: bool) -> pd.DataFrame | None:
+                  errorbars: str, force: bool) -> tuple[pd.DataFrame, pd.DataFrame] | None:
     """
     Roda o pipeline completo (validar -> agregar -> resumir -> tabelas ->
     4 gráficos -> boxplots) para um único estágio (tag "20n" ou "10n").
-    Devolve o DataFrame de resumo em caso de sucesso, ou None se a validação
+    Devolve (per_run, resumo) em caso de sucesso, ou None se a validação
     reprovou (ou o arquivo não existe/está vazio).
     """
     print(f"\n{'=' * 78}\nANALISANDO: {label} ({raw_path})\n{'=' * 78}")
@@ -486,19 +689,33 @@ def run_pipeline(raw_path: Path, tag: str, label: str, processed_dir: Path, figu
     with pd.option_context("display.width", 200, "display.max_columns", 20):
         print(linhas.to_string(index=False))
 
+    desc_path = processed_dir / f"descriptive_{tag}.csv"
+    tests_path = processed_dir / f"stats_tests_{tag}.csv"
+    descriptive(per_run).to_csv(desc_path, index=False, float_format="%.6g")
+    tests = run_tests(per_run)
+    tests.to_csv(tests_path, index=False, float_format="%.6g")
+    print(f"Estatística descritiva: {desc_path}")
+    print(f"Testes de hipótese     : {tests_path}")
+    kw = tests[(tests["test"] == "kruskal_wallis") & tests["group"].str.startswith("protocolos")]
+    print("\nKruskal-Wallis entre protocolos (p-valor; * <0,05, ** <0,01, *** <0,001):")
+    tabela = kw.assign(p=[f"{p:.3g}{significance_stars(p)}" for p in kw["p_value"]]).pivot(
+        index="group", columns="metric", values="p")
+    print(tabela.reindex([f"protocolos @ {sp:g} m/s" for sp in SPEEDS]).to_string())
+
     print(f"\nGerando os 4 gráficos obrigatórios ({label})...")
     for m in METRICS:
-        for p in plot_metric(summary, m, errorbars, figures_dir, tag):
+        for p in plot_metric(summary, m, errorbars, figures_dir, tag, tests):
             print(f"  -> {p}")
 
     print(f"\nGerando boxplots de dispersão ({label})...")
     for m in METRICS:
-        print(f"  -> {boxplot_metric(per_run, m, figures_dir, tag)}")
+        print(f"  -> {boxplot_metric(per_run, m, figures_dir, tag, tests)}")
 
-    return summary
+    return per_run, summary
 
 
 def main() -> int:
+    global EXPECTED_RUNS
     ap = argparse.ArgumentParser(description="Análise dos CSVs do ns-3 (MANET): base (20n) + extensão (10n).")
     ap.add_argument("--raw", type=Path, default=ROOT / "data" / "raw" / "resultados_20n.csv",
                     help="CSV da matriz-base (20 nós)")
@@ -507,32 +724,39 @@ def main() -> int:
     ap.add_argument("--processed-dir", type=Path, default=ROOT / "data" / "processed")
     ap.add_argument("--figures-dir", type=Path, default=ROOT / "figures")
     ap.add_argument("--errorbars", choices=["ci", "std"], default="ci")
+    ap.add_argument("--expected-runs", type=int, default=EXPECTED_RUNS,
+                    help="repetições por combinação esperadas nos CSVs (= NUM_RUNS do .cc)")
     ap.add_argument("--force", action="store_true",
                     help="gera mesmo com erros de validação (não use para o resultado final)")
     args = ap.parse_args()
+    EXPECTED_RUNS = args.expected_runs
 
     args.processed_dir.mkdir(parents=True, exist_ok=True)
     args.figures_dir.mkdir(parents=True, exist_ok=True)
 
-    summary_20n = run_pipeline(args.raw, "20n", "20 nós (base)", args.processed_dir,
+    res_20n = run_pipeline(args.raw, "20n", "20 nós (base)", args.processed_dir,
                                args.figures_dir, args.errorbars, args.force)
 
-    summary_10n = None
+    res_10n = None
     if args.raw_ext.exists():
-        summary_10n = run_pipeline(args.raw_ext, "10n", "10 nós (extensão)", args.processed_dir,
+        res_10n = run_pipeline(args.raw_ext, "10n", "10 nós (extensão)", args.processed_dir,
                                    args.figures_dir, args.errorbars, args.force)
     else:
         print(f"\n(extensão pulada: {args.raw_ext} não encontrado — rode a extensão no ns-3 "
               "antes de gerar a comparação 20 vs 10 nós)")
 
-    if summary_20n is not None and summary_10n is not None:
+    if res_20n is not None and res_10n is not None:
+        summary_20n, summary_10n = res_20n[1], res_10n[1]
+        nodes_path = args.processed_dir / "stats_nodes_comparison.csv"
+        run_nodes_tests(res_20n[0], res_10n[0]).to_csv(nodes_path, index=False, float_format="%.6g")
+        print(f"\nTeste 20 vs 10 nós: {nodes_path}")
         print("\nGerando comparação 20 vs 10 nós...")
         for m in METRICS:
             for p in plot_nodes_comparison(summary_20n, summary_10n, m, args.errorbars, args.figures_dir):
                 print(f"  -> {p}")
 
     print("\nConcluído.")
-    return 0 if summary_20n is not None else 2
+    return 0 if res_20n is not None else 2
 
 
 if __name__ == "__main__":
