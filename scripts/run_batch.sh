@@ -89,8 +89,8 @@ echo ">> Compilando (./ns3 build manet-routing)..."
 (cd "$NS3_DIR" && ./ns3 build manet-routing)
 
 echo ">> Rodando a simulacao (validacao + ETAPA 2/3 base 20 nos + ETAPA 3/3 extensao 10 nos)."
-echo ">> Isso demora bastante ($NUM_RUNS repeticoes x 2 estagios); o terminal mostra uma linha"
-echo ">> de progresso por protocolo x velocidade (nao uma por execucao), para cada estagio."
+echo ">> Isso demora bastante ($NUM_RUNS repeticoes x 2 estagios); o progresso [n/$((3 * 4 * NUM_RUNS))]"
+echo ">> aparece no terminal para cada estagio separadamente."
 (cd "$NS3_DIR" && ./ns3 run scratch/manet-routing)
 
 SRC_LOG="$NS3_DIR/resultado_simulacao/log.txt"

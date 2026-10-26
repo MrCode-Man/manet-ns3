@@ -283,15 +283,6 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run, uint32_t
   // sempre o mesmo resultado).
   RngSeedManager::SetSeed (MASTER_SEED);
   RngSeedManager::SetRun (run);
-  // O ns-3 atribui um stream automático a toda variável aleatória que não
-  // recebeu um explicitamente (backoff do MAC Wi-Fi, jitter dos HELLO/TC do
-  // OLSR, etc.), a partir de um contador global do processo. Sem este reset,
-  // o contador continuaria subindo de uma execução para a outra, e o
-  // resultado de um run passaria a depender de quantas execuções vieram antes
-  // dele (a mesma configuração dava 50% e depois 0% de PDR no mesmo
-  // processo). Zerar aqui isola cada execução das anteriores: mesmo
-  // protocolo + velocidade + run + nós => sempre o mesmo resultado.
-  RngSeedManager::ResetNextStreamIndex ();
 
   // Iguala a taxa do tráfego broadcast (HELLO/TC/updates dos protocolos de
   // roteamento) à taxa dos dados — ver "Notas de implementação" no topo.
@@ -382,6 +373,46 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run, uint32_t
   // diferença de resultado vem do protocolo, não de uma topologia diferente
   // por acaso.
   streamIndex += mobility.AssignStreams (c.nodes, streamIndex);
+
+  // ---- Streams explícitos para Wi-Fi e roteamento ----
+  // Toda variável aleatória SEM stream explícito recebe um automático, tirado
+  // de um contador global do processo (RngSeedManager::GetNextStreamIndex)
+  // que não volta a zero entre execuções. Deixar o MAC Wi-Fi (backoff) e o
+  // protocolo de roteamento (jitter dos HELLO/TC/updates) nesse contador
+  // fazia o resultado de um run depender de quantas execuções vieram antes
+  // dele no mesmo processo (a mesma configuração dava 50% e depois 0% de
+  // PDR). Aqui eles entram no MESMO contador manual (streamIndex) da
+  // mobilidade, logo depois dela — os índices da mobilidade não mudam, então
+  // a topologia/movimento continuam idênticos aos de antes.
+  streamIndex += WifiHelper::AssignStreams (c.devices, streamIndex);
+  if (protocol == "aodv")
+    {
+      streamIndex += aodv.AssignStreams (c.nodes, streamIndex);
+    }
+  else if (protocol == "olsr")
+    {
+      streamIndex += olsr.AssignStreams (c.nodes, streamIndex);
+    }
+  else // dsdv: o DsdvHelper não tem AssignStreams, então atribui-se direto em cada nó
+    {
+      for (uint32_t i = 0; i < c.nodes.GetN (); ++i)
+        {
+          Ptr<Ipv4ListRouting> list = DynamicCast<Ipv4ListRouting> (
+              c.nodes.Get (i)->GetObject<Ipv4> ()->GetRoutingProtocol ());
+          int16_t priority = 0;
+          Ptr<dsdv::RoutingProtocol> rp =
+              DynamicCast<dsdv::RoutingProtocol> (list->GetRoutingProtocol (0, priority));
+          streamIndex += rp->AssignStreams (streamIndex);
+        }
+    }
+
+  // Rede de segurança: testado, atribuir streams explícitos SOZINHO não basta
+  // (ainda sobra alguma variável aleatória interna do ns-3 fora do alcance de
+  // AssignStreams, e o resultado continuava variando com a ordem das
+  // execuções). Zerar o contador global faz qualquer variável restante
+  // começar sempre do mesmo ponto em cada execução. Com os dois juntos:
+  // mesmo protocolo + velocidade + run + nós => sempre o mesmo resultado.
+  RngSeedManager::ResetNextStreamIndex ();
 
   return c;
 }
@@ -514,6 +545,8 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
   std::ofstream csv (csvPath, std::ios::app);
   csv << std::fixed << std::setprecision (6);
 
+  uint32_t somaTx = 0, somaRx = 0;
+
   // Uma linha por fluxo de dados, identificado pela combinação de origem,
   // destino e porta — isso separa os 4 fluxos de tráfego do tráfego de
   // controle gerado pelo próprio protocolo de roteamento, que também
@@ -563,6 +596,8 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
             }
         }
       lost = (tx > rx) ? (tx - rx) : 0;
+      somaTx += tx;
+      somaRx += rx;
 
       // PDR: percentual de pacotes transmitidos que chegaram ao destino.
       double pdrPct = (tx > 0) ? (100.0 * rx / tx) : 0.0;
@@ -581,6 +616,10 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
           << delayMs << "," << jitterMs << "\n";
     }
   csv.close ();
+
+  double pdrGeral = (somaTx > 0) ? (100.0 * somaRx / somaTx) : 0.0;
+  std::cout << "  [" << nodeTag << "] " << protocol << " | " << speed << " m/s | run " << run
+            << " -> tx=" << somaTx << " rx=" << somaRx << " PDR=" << pdrGeral << "%" << std::endl;
 
   Simulator::Destroy ();
 }
@@ -649,17 +688,18 @@ main (int argc, char *argv[])
                "throughputMbps,pdrPct,delayMs,jitterMs\n";
       }
 
+      uint32_t execucao = 0;
       for (const std::string &p : PROTOCOLS)
         {
           for (double s : SPEEDS)
             {
               for (uint32_t r = 1; r <= NUM_RUNS; ++r)
                 {
+                  ++execucao;
+                  std::cout << "[" << execucao << "/" << totalPorEtapa << "] (" << st.tag << ") "
+                            << p << ", " << s << " m/s, run " << r << "..." << std::endl;
                   RunExperiment (p, s, r, st.nodes, st.csvPath, st.tag);
                 }
-              // uma linha de progresso por (protocolo, velocidade), não por execução
-              std::cout << "  [" << st.tag << "] " << p << " | " << s << " m/s concluido ("
-                        << NUM_RUNS << " runs)" << std::endl;
             }
         }
 
