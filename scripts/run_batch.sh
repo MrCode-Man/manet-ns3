@@ -12,11 +12,12 @@
 #      anterior) — cada execução nova começa com essas 3 pastas limpas
 #   2. liga src/manet-routing.cc a $NS3_DIR/scratch/ (symlink)
 #   3. compila (./ns3 build)
-#   4. roda (./ns3 run scratch/manet-routing) — isso sozinho já faz a
+#   4. roda o binario compilado em 24 partes paralelas (estagio x protocolo x velocidade,
+#      ver JOBS abaixo) e junta os resultados — isso sozinho já faz a
 #      validação dos 3 protocolos e DOIS estágios da matriz experimental:
-#        - base: 3 protocolos x 4 velocidades x 25 repeticoes, 20 nos
+#        - base: 3 protocolos x 4 velocidades x NUM_RUNS repeticoes (lido do .cc), 20 nos
 #        - extensao: a mesma matriz, 10 nos (variavel experimental do grupo)
-#      600 execucoes no total.
+#      (2 x 12 x NUM_RUNS execucoes no total).
 #   5. copia de volta para data/raw/ deste projeto: resultados_20n.csv,
 #      resultados_10n.csv, o log completo da execução (log.txt) e a amostra
 #      de XML do FlowMonitor (flowmon/, 1 arquivo por combinação
@@ -88,10 +89,70 @@ echo ">> Compilando (./ns3 build manet-routing)..."
 # scratch/ (ex.: projetos externos do usuario) nao devem poder quebrar este build.
 (cd "$NS3_DIR" && ./ns3 build manet-routing)
 
-echo ">> Rodando a simulacao (validacao + ETAPA 2/3 base 20 nos + ETAPA 3/3 extensao 10 nos)."
-echo ">> Isso demora bastante ($NUM_RUNS repeticoes x 2 estagios); o progresso [n/$((3 * 4 * NUM_RUNS))]"
-echo ">> aparece no terminal para cada estagio separadamente."
-(cd "$NS3_DIR" && ./ns3 run scratch/manet-routing)
+# Execucao em paralelo: cada (estagio x protocolo x velocidade) vira um
+# processo independente do mesmo binario (--stage / --protocol / --speed /
+# --outDir), 24 partes no total (dividir tambem por velocidade equilibra a
+# carga: um protocolo a 20 nos pode ser varias vezes mais lento que outro). O resultado de cada execucao nao depende da ordem nem de quais
+# outras rodam no mesmo processo (streams isolados em MontarCenario), entao
+# o CSV juntado e identico ao de uma rodada sequencial. JOBS = quantos
+# processos ao mesmo tempo (padrao: nucleos - 2; JOBS=1 = sequencial; cada
+# processo usa 1 nucleo, em prioridade baixa para nao pesar no resto do
+# computador).
+NUCLEOS=$(nproc 2>/dev/null || echo 4)
+JOBS="${JOBS:-$(( NUCLEOS > 3 ? NUCLEOS - 2 : 1 ))}"
+BIN=$(find "$NS3_DIR/build/scratch" -maxdepth 1 -type f -executable -name 'ns3-dev-manet-routing-*' | head -1)
+if [[ -z "$BIN" ]]; then
+  echo "ERRO: nao encontrei o binario compilado em $NS3_DIR/build/scratch/." >&2
+  exit 1
+fi
+OUT="$NS3_DIR/resultado_simulacao"
+PARTES="$NS3_DIR/resultado_simulacao_partes"
+rm -rf "$OUT" "$PARTES"
+mkdir -p "$OUT/flowmon" "$PARTES"
+
+rodar_parte () {
+  local stage="$1" proto="$2" speed="$3" dir="$PARTES/${1}_${2}_${3}"
+  mkdir -p "$dir"
+  if ! LD_LIBRARY_PATH="$NS3_DIR/build/lib" nice -n 19 "$BIN" --stage="$stage" \
+       --protocol="$proto" --speed="$speed" --outDir="$dir/saida" >"$dir/stdout.txt" 2>&1; then
+    echo "   FALHOU: $stage / $proto / $speed m/s (ver $dir/stdout.txt)" >&2
+    return 1
+  fi
+  echo "   parte concluida: $stage / $proto / $speed m/s"
+}
+export -f rodar_parte
+export NS3_DIR BIN PARTES
+
+echo ">> Rodando a simulacao: 24 partes (20n/10n x aodv/olsr/dsdv x 1/5/10/20 m/s),"
+echo ">> $JOBS em paralelo, $NUM_RUNS repeticoes por parte. O progresso detalhado de cada"
+echo ">> parte fica em $PARTES/<estagio>_<protocolo>_<velocidade>/stdout.txt."
+# ordem: as partes mais pesadas (20 nos, aodv) primeiro, para nao sobrarem no fim
+for stage in 20n 10n; do
+  for proto in aodv olsr dsdv; do
+    for speed in 1 5 10 20; do echo "$stage $proto $speed"; done
+  done
+done | xargs -P "$JOBS" -L1 bash -c 'rodar_parte "$0" "$1" "$2"'
+
+echo ">> Juntando as partes (mesma ordem de uma rodada sequencial: protocolo, velocidade)..."
+for stage in 20n 10n; do
+  csv="$OUT/resultados_${stage}.csv"
+  head -n 1 "$PARTES/${stage}_aodv_1/saida/resultados_${stage}.csv" >"$csv"
+  for proto in aodv olsr dsdv; do
+    for speed in 1 5 10 20; do
+      tail -n +2 "$PARTES/${stage}_${proto}_${speed}/saida/resultados_${stage}.csv" >>"$csv"
+    done
+  done
+done
+: >"$OUT/log.txt"
+for stage in 20n 10n; do
+  for proto in aodv olsr dsdv; do
+    for speed in 1 5 10 20; do
+      echo "################ parte: $stage / $proto / $speed m/s ################" >>"$OUT/log.txt"
+      cat "$PARTES/${stage}_${proto}_${speed}/saida/log.txt" >>"$OUT/log.txt"
+    done
+  done
+done
+cp -r "$PARTES"/*/saida/flowmon/. "$OUT/flowmon/"
 
 SRC_LOG="$NS3_DIR/resultado_simulacao/log.txt"
 SRC_FLOWMON="$NS3_DIR/resultado_simulacao/flowmon"

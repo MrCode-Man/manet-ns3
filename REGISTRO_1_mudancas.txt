@@ -1,0 +1,184 @@
+REGISTRO 1 — O QUE FOI FEITO NA BRANCH "analise"
+=================================================
+(Arquivo só para registro. Não faz parte da versão final do trabalho.)
+Data da sessão: 2026-10-26.  Autor das mudanças: Claude Code, a pedido do grupo.
+
+0. RESUMO EM 6 LINHAS
+---------------------
+ 1. A main foi igualada à dev (merge sem perda de histórico) e enviada ao GitHub.
+ 2. analyze.py ganhou estatística de verdade: tabela descritiva, testes de
+    hipótese, estrelas de significância e legendas explicativas nos gráficos.
+ 3. Foi achado e corrigido um problema de reprodutibilidade na simulação: o
+    resultado de cada execução dependia de quantas execuções vieram antes no
+    mesmo processo (contador global de streams aleatórios do ns-3).
+ 4. Foram refeitas as 60 repetições (20 e 10 nós) com a correção; as conclusões
+    não mudaram (nenhuma célula difere das 60 antigas após correção de Holm).
+ 5. O simulador agora pode rodar em 24 partes paralelas; o CSV final sai
+    idêntico, byte a byte, ao da rodada sequencial.
+ 6. Tempo da matriz completa: 78 min 43 s (sequencial) -> 30 min 02 s (paralelo).
+
+
+1. LINHA DO TEMPO (commits)
+---------------------------
+ e4c699a  main passa a refletir exatamente a dev (merge, sem force-push).
+ 4dbab4f  analyze.py: estatística descritiva, testes, legendas nos gráficos.
+ 29bdbe5  teste: NUM_RUNS=5 e run_batch.sh lê NUM_RUNS direto do .cc.
+ 510ef8b  fix: ResetNextStreamIndex por execução (primeira versão da correção).
+ 2f6fb40  fix: streams explícitos (Wi-Fi + roteamento) + reset de segurança.
+ 1117edc  dados: rodada de 60 repetições (20n e 10n) com a correção.
+ (este)   execução paralela (--protocol/--stage/--speed/--outDir), README e
+          estes registros.
+
+
+2. MUDANÇAS EM scripts/analyze.py
+---------------------------------
+ - descriptive_<tag>.csv: média, mediana, desvio, CV, quartis, IQR, mín/máx,
+   assimetria e quantos pontos ficam além de 1,5xIQR (só contados; NADA é
+   removido dos dados).
+ - stats_tests_<tag>.csv: Shapiro-Wilk (normalidade de cada célula), Levene
+   (variâncias entre protocolos), Kruskal-Wallis (protocolos por velocidade e
+   velocidades por protocolo, efeito epsilon^2) e Mann-Whitney par a par com
+   correção de Holm (efeito: delta de Cliff).
+ - stats_nodes_comparison.csv: Mann-Whitney 20 vs 10 nós, Holm por métrica.
+ - Gráficos: estrelas (* p<0,05, ** p<0,01, *** p<0,001) acima de cada
+   velocidade em que os protocolos diferem; legenda explicando barras de erro
+   (IC 95% t de Student), bigodes do boxplot (1,5xIQR) e "nenhuma execução foi
+   removida". Boxplot corrigido (NaN quebrava a caixa).
+ - Delay/jitter de uma execução SEM nenhum pacote recebido passam a ser NaN
+   (indefinido) em vez de 0. [DECISÃO PENDENTE do grupo: manter ou voltar a 0.]
+ - Novo argumento --expected-runs (validação aceita rodadas com outro nº de
+   repetições, ex. testes com 5).
+ - Por que testes por postos (Kruskal/Mann-Whitney): delay e jitter têm cauda
+   longa (assimetria até ~5), então média/ANOVA não são a melhor escolha.
+ [PENDENTE]: o professor pediu para os gráficos ficarem "mais ou menos como
+ estavam". O visual novo (estrelas/legendas) pode ser revertido mantendo a
+ estatística só nas tabelas CSV.
+
+
+3. O PROBLEMA DE REPRODUTIBILIDADE E A CORREÇÃO
+-----------------------------------------------
+ Sintoma: a mesma configuração (OLSR, 10 nós, 1 m/s, run 33) deu 50% de PDR
+ e, repetida no MESMO processo, 0%. As runs do AODV que tinham delay extremo
+ também não reproduziam isoladas.
+ Causa (confirmada no código do ns-3, rng-seed-manager.cc): toda variável
+ aleatória sem stream explícito (backoff do MAC Wi-Fi, jitter dos HELLO/TC/
+ updates dos protocolos) recebe um stream automático de um contador GLOBAL do
+ processo (g_nextStreamIndex) que nunca volta a zero. O .cc só fixava os
+ streams da mobilidade. Logo, o comportamento do MAC/roteamento de um run
+ dependia de quantas execuções vieram antes dele.
+ Correção (src/manet-routing.cc, MontarCenario):
+   a) streams explícitos para Wi-Fi (WifiHelper::AssignStreams) e para o
+      roteamento (AodvHelper/OlsrHelper::AssignStreams; DSDV nó a nó, pois o
+      DsdvHelper não tem AssignStreams), no MESMO contador manual (streamIndex)
+      da mobilidade, logo depois dela. Os índices da mobilidade não mudam, então
+      topologia e movimento ficam idênticos aos de antes;
+   b) RngSeedManager::ResetNextStreamIndex() como rede de segurança.
+ Teste: só (a) NÃO basta (OLSR/run 33 ainda deu 50%, 0%, 75% em repetições);
+ (a)+(b) dá resultado idêntico em qualquer ordem. Ainda sobra alguma variável
+ aleatória interna fora do alcance de AssignStreams (qual, não foi identificado).
+ Efeito: mesmo protocolo + velocidade + run + nós => sempre o mesmo resultado,
+ em qualquer ordem — pré-requisito para a execução paralela (seção 5).
+
+
+4. O QUE A CORREÇÃO MUDOU NOS RESULTADOS
+----------------------------------------
+ Comparação das 60 repetições novas (com correção) com as 60 antigas
+ (commit 7172f1d, sem correção): 96 células (4 métricas x 12 combinações x 2
+ estágios), Mann-Whitney: 2 com p<0,05 sem correção (esperado ao acaso: ~5),
+ 0 após Holm. (Obs.: o commit 1117edc e algumas mensagens da sessão dizem "192";
+ o número correto é 96.) Ou seja: a correção dá reprodutibilidade sem alterar conclusões.
+ - OLSR com 0% de PDR (execução inteira sem entrega): 1 caso em 720 antes, 0
+   agora. Evento raro; não dá para afirmar que a correção o eliminou.
+ - Delay do AODV (10 nós): a MEDIANA não mudou (~9 a 11 ms); a cauda ficou
+   menos extrema (máx. 161->74 ms a 10 m/s; 176->108 ms a 20 m/s; desvio
+   23->12,5 e 25->15). A cauda longa persiste: é comportamento do AODV com
+   mobilidade (pacotes esperando descoberta de rota), não erro de simulação.
+   O mecanismo exato não foi provado diretamente.
+ - Rodadas de teste intermediárias: 5 repetições (sem/com correção) e 12
+   repetições (original vs. corrigida) — estatisticamente equivalentes entre
+   si e às 60 (dentro do esperado para 5 e 12 amostras).
+
+
+5. EXECUÇÃO PARALELA — COMO FUNCIONA E COMO ATIVAR
+--------------------------------------------------
+ 5.1 Por que NÃO é multithread "de verdade"
+   Uma única simulação Wi-Fi ad hoc (10 ou 20 nós num canal compartilhado, em
+   movimento) não pode ser dividida entre núcleos: o módulo MPI do ns-3 exige
+   particionar a rede em pedaços ligados por enlaces ponto a ponto com atraso, o
+   que não existe aqui, e o custo de sincronizar superaria o ganho. O que
+   paraleliza bem são as execuções INDEPENDENTES entre si: 1440 execuções
+   (protocolo x velocidade x run x estágio) de poucos segundos cada. Por isso a
+   paralelização é por PROCESSOS, não por threads.
+ 5.2 O que muda no código (src/manet-routing.cc)
+   O programa continua rodando tudo sozinho se for chamado sem argumentos.
+   Agora aceita, opcionalmente:
+       --protocol=aodv|olsr|dsdv|all    (padrão: all)
+       --stage=20n|10n|all              (padrão: all)
+       --speed=1|5|10|20|all            (padrão: all, em m/s)
+       --outDir=<pasta>                 (padrão: resultado_simulacao)
+   Cada processo grava CSV, log e XML do FlowMonitor na sua própria --outDir,
+   então nenhum escreve no arquivo do outro. Combinação inválida => erro e
+   código de saída 1.
+   Isso só é correto porque cada execução é independente das outras (seção 3):
+   o resultado de (protocolo, velocidade, run, nós) é o mesmo rodando tudo num
+   processo só ou dividido em partes.
+ 5.3 O que o scripts/run_batch.sh faz
+   1) move as saídas antigas para bkp/ (como antes), liga o .cc ao ns-3 e
+      compila UMA vez (./ns3 build manet-routing);
+   2) localiza o binário compilado e lança 24 partes (2 estágios x 3 protocolos
+      x 4 velocidades) com "xargs -P JOBS", cada uma em prioridade baixa
+      (nice 19) e saída própria em $NS3_DIR/resultado_simulacao_partes/<estagio>_<protocolo>_<velocidade>/;
+      as partes mais pesadas (20 nós, AODV) são lançadas primeiro;
+   3) junta os CSVs na mesma ordem de uma rodada sequencial (estágio ->
+      protocolo -> velocidade -> run), concatena os logs (com um cabeçalho por
+      parte) e copia os XMLs do FlowMonitor;
+   4) o resto (copiar para data/raw, rodar analyze.py) é como antes.
+ 5.4 Como ativar / controlar
+   bash scripts/run_batch.sh            -> paralelo, JOBS = núcleos - 2
+   JOBS=4 bash scripts/run_batch.sh     -> 4 processos ao mesmo tempo
+   JOBS=1 bash scripts/run_batch.sh     -> sequencial (mesmo resultado)
+   Uma parte isolada, direto no binário:
+     LD_LIBRARY_PATH=$NS3_DIR/build/lib \
+       $NS3_DIR/build/scratch/ns3-dev-manet-routing-default \
+       --stage=10n --protocol=olsr --speed=1 --outDir=/tmp/teste
+   Para não pesar no PC: prioridade baixa (nice 19) e 2 núcleos livres.
+   (Sem root não dá para subir a prioridade de um processo já em execução.)
+ 5.5 Verificação de correção
+   data/raw/resultados_20n.csv e resultados_10n.csv da rodada paralela são
+   IDÊNTICOS byte a byte (cmp) aos da rodada sequencial de 60 repetições
+   commitada em 1117edc. Os arquivos processados e os PNGs também não mudaram.
+ 5.6 Limitações
+   - O ganho depende do número de núcleos; mais processos que núcleos não ajudam.
+   - O ganho NÃO é linear (ver seção 6).
+   - O log.txt fica com uma seção por parte (não é mais um fluxo único).
+
+
+6. MEDIÇÃO DE TEMPO (matriz completa: 60 repetições x 2 estágios = 1440 execuções)
+---------------------------------------------------------------------------------
+   Sequencial (1 processo)           real 78 min 43 s   user  78 min 38 s
+   Paralelo, 24 partes, JOBS=10      real 30 min 02 s   user 287 min 43 s
+   Ganho de tempo real: 78,7 / 30,0 = ~2,6x (com 10 processos simultâneos).
+   O tempo "user" (CPU total) é ~3,7x MAIOR no paralelo: cada processo ficou
+   mais lento quando rodavam 10 juntos. Não foi investigado a fundo; a máquina é
+   um notebook (Intel Core i7-1255U, 12 threads, núcleos híbridos P+E e limite de
+   potência baixo, rodando em WSL2), e com todos os núcleos ocupados é esperado
+   que cada um renda menos (SMT, núcleos E, térmica/potência). Isto é uma
+   HIPÓTESE, não foi medida. Em desktop com mais núcleos físicos o ganho tende a
+   ser maior.
+   Tentativa anterior (descartada): 6 partes (estágio x protocolo). Após 8 min,
+   20n/AODV estava em 33/240 execuções enquanto 10n/OLSR estava em 107/240
+   (20n/AODV é muito mais pesada). Estimava-se ~58 min de parede (ganho ~1,3x),
+   por isso foi interrompida e a divisão passou a incluir a velocidade (24 partes).
+   Observação: o tempo sequencial inclui compilação e análise (poucos segundos);
+   retirar o cout por execução NÃO acelerou (6 min 09 s vs 6 min 14 s com 5 reps).
+   Possível ganho adicional (não aplicado): compilar o ns-3 no perfil "optimized".
+
+
+7. ESTADO FINAL E PENDÊNCIAS
+----------------------------
+ - NUM_RUNS = 60 (valor de entrega). data/raw/log.txt agora é o log paralelo.
+ - A main não foi alterada além do merge inicial com a dev.
+ - Backup das saídas anteriores: data/raw/bkp, data/processed/bkp, figures/bkp
+   (só a rodada imediatamente anterior; o histórico completo está no git).
+ - PENDENTE: decidir o visual final dos gráficos (professor quer o estilo antigo);
+   decidir delay/jitter NaN vs 0; decidir se o reset/streams entram na versão final.

@@ -1,0 +1,185 @@
+REGISTRO 2 — OS RESULTADOS FAZEM SENTIDO? LEITURA A NÍVEL DE REDE / INTERNET DAS COISAS
+=========================================================================================
+(Arquivo só para registro. Não faz parte da versão final do trabalho.)
+Base: rodada de 60 repetições com a correção de RNG (data/raw/resultados_*n.csv,
+data/processed/*). Os números abaixo vêm desses arquivos. Onde algo é HIPÓTESE
+(não verificado nos dados), está marcado assim.
+
+LEGENDA:  [OK] coerente com o esperado   [ALERTA] comportamento estranho/ressalva
+          [HIP] explicação plausível, não comprovada
+
+
+1. O CENÁRIO, EM LINGUAGEM DE REDE
+----------------------------------
+ - Rádio: Wi-Fi 802.11b ad hoc (sem ponto de acesso), 11 Mbps (DSSS), potência de
+   transmissão 7,5 dBm (~5,6 mW), 2,4 GHz, propagação de espaço livre (Friis).
+ - Área: 500 m x 500 m. 20 nós (base) ou 10 nós (extensão), posições sorteadas.
+ - Alcance de decodificação: ESTIMADO em ~300 m (Friis, 7,5 dBm, ~-82 dBm de
+   sensibilidade útil para 11 Mbps). [HIP: não foi medido no simulador.]
+   Distância média entre dois pontos sorteados numa área quadrada de lado L:
+   ~0,52 x L = ~260 m. Ou seja, o alcance é do MESMO TAMANHO da área: muitos
+   pares ficam "na beirada" do alcance (num teste com 10 nós, ~80% dos pares
+   estavam a menos de 300 m; em outro instante, 43/45). Rede conectada a maior
+   parte do tempo, mas com enlaces marginais e algumas rotas de 2 a 4 saltos.
+ - Mobilidade: Random Waypoint, velocidade constante (1, 5, 10 ou 20 m/s),
+   pausa de 1 s. 1 m/s ~ pedestre devagar; 5 ~ corrida/bicicleta; 10 ~ veículo
+   urbano; 20 ~ veículo rápido (72 km/h).
+ - Tráfego: 4 fluxos UDP constantes (CBR), 1024 B de payload a cada 0,1 s
+   = 0,0842 Mbps por fluxo (com cabeçalhos IP/UDP), 0,337 Mbps no total. Fluxo
+   i liga o nó i ao nó (N-1-i). Dados de 15 s a 118 s (simulação de 120 s).
+ - Protocolos: AODV (reativo: descobre a rota quando precisa e guarda os pacotes
+   enquanto isso), OLSR e DSDV (proativos: mantêm tabela de rotas de todos o
+   tempo trocando mensagens de controle periódicas).
+ - Métricas: PDR (% de pacotes entregues), throughput, atraso fim a fim e jitter.
+ - Não é um cenário "IoT de baixa potência" típico (esses usam 802.15.4/BLE/LoRa,
+   kbps, bateria). É um cenário MANET genérico que serve de modelo para
+   comportamento de roteamento com mobilidade. NÃO há métrica de energia nem de
+   overhead de controle (ver seção 5).
+
+
+2. CONTAS DE BOLSO (o que se deveria esperar)
+---------------------------------------------
+ - Carga oferecida: 0,337 Mbps contra 11 Mbps nominais (~5 a 6 Mbps úteis no
+   802.11b real) => canal usado a ~3% (nominal) a ~6% (útil).
+   CONCLUSÃO: os 25-45% de pacotes perdidos NÃO são congestionamento. São
+   conectividade/roteamento/mobilidade (e, no máximo, colisões de broadcast).
+ - Tempo de 1 salto: quadro de 1052 B a 11 Mbps ~0,8 ms + preâmbulo (192 us) +
+   MAC/backoff => ~1,2 a 2 ms por salto. Atraso médio medido: 6 a 13 ms
+   (20 nós) e 6 a 14 ms (10 nós) => compatível com poucos saltos mais fila/backoff
+   e variações. Atrasos de dezenas de ms (média) são plausíveis; de centenas de
+   ms são ANORMAIS e só podem vir de espera em fila (ver 4.4).
+ - Throughput máximo possível por fluxo = carga oferecida = 0,0842 Mbps.
+   Throughput agregado máximo = 0,337 Mbps. Medido: 0,17 a 0,28 Mbps (agregado).
+
+
+3. O QUE ESTÁ COERENTE  [OK]
+----------------------------
+ 3.1 Perdas não vêm de congestionamento (seção 2) e o PDR segue a conectividade.
+ 3.2 Efeito da velocidade (Kruskal-Wallis, velocidades por protocolo):
+     - OLSR e DSDV PIORAM com a velocidade: PDR a 20 nós, OLSR 75,0% (1 m/s) ->
+       62,5% (20 m/s); DSDV 57,0% -> 49,5%; a 10 nós, DSDV 74,2% -> 55,2% e
+       OLSR 72,3% -> 60,1%. É o esperado: tabelas proativas ficam obsoletas
+       quando os vizinhos mudam mais rápido que o período das mensagens de
+       controle (HELLO/TC/updates).
+     - AODV é estável (PDR a 20 nós: 75,5 / 77,8 / 78,9 / 72,1%; efeito da
+       velocidade não significativo, p ~0,18-0,20): protocolo reativo recalcula a
+       rota sob demanda, então tolera melhor a mobilidade. Também esperado.
+ 3.3 AODV tem o MAIOR atraso e o MAIOR jitter (a 20 nós, ~12-13 ms de atraso
+     contra ~6-8 ms de OLSR/DSDV). Esperado: descoberta de rota (RREQ/RREP) e
+     pacotes guardados em fila até a rota existir. É o trade-off clássico:
+     AODV entrega mais (PDR mais alto) pagando em latência; OLSR/DSDV têm latência
+     baixa (rota já pronta) mas perdem pacotes quando a rota está desatualizada.
+ 3.4 Jitter ~ metade do atraso médio em todos os protocolos: normal para tráfego
+     CBR com variação de fila/backoff.
+ 3.5 Mais nós (20 vs 10), 15 de 48 comparações significativas (Holm):
+     - DSDV tem PDR MAIOR com 10 nós (ex.: 74% vs 57% a 1 m/s, delta de Cliff
+       -0,45): DSDV transmite a tabela inteira periodicamente; o volume de
+       controle cresce com N, causando mais colisões de broadcast.
+     - AODV tem atraso e jitter MAIORES com 20 nós (rotas mais longas e inundações
+       RREQ maiores). Ambos são efeitos clássicos de escala de overhead.
+ 3.6 A diferença entre protocolos é significativa em 10 de 12 combinações de PDR
+     a 20 nós (AODV x OLSR não difere a 1 e 5 m/s: ambos ~75%). A 10 nós, só em 4
+     de 12 (sem o alto contraste de densidade, os protocolos ficam parecidos).
+ 3.7 Reprodutibilidade (seção 3 do Registro 1): mesma config => mesmo resultado.
+
+
+4. ALERTAS: COISAS ESTRANHAS OU QUE EXIGEM CUIDADO NA INTERPRETAÇÃO  [ALERTA]
+-----------------------------------------------------------------------------
+ 4.1 O PDR de um fluxo é "tudo ou nada" (bimodal), e a média engana.
+     Distribuição do PDR por FLUXO (20 nós): AODV 54,5% dos fluxos entregam >=95%
+     e ~18% entregam <25%; DSDV 25,5% >=95% e 11% sem receber nada; OLSR 34,6% >=95%
+     e 9% sem receber nada. A média (~75%) é uma mistura de fluxos que funcionam
+     perfeitamente e fluxos que quase não funcionam; quase nenhum fluxo "típico"
+     tem 75%. Para um sistema IoT isso significa: o que decide é se o par
+     origem-destino está conectado (topologia), não uma "taxa média de perda".
+     Recomendado mostrar histograma do PDR por fluxo ao lado da média.
+ 4.2 Fluxos que NUNCA recebem nada, e mais com mobilidade BAIXA.
+     Fluxos sem nenhuma recepção (20 nós): AODV 5, DSDV 106, OLSR 87 (de 960 cada);
+     (10 nós): AODV 44, DSDV 51, OLSR 89. Por velocidade (20 nós): 88 (1 m/s),
+     53 (5), 35 (10), 22 (20 m/s).
+     - A queda com a velocidade parece contraintuitiva, mas é coerente: a 1 m/s a
+       topologia quase não muda; um par que começa desconectado/mal conectado
+       fica assim a simulação inteira ("loteria da topologia"). Em velocidade
+       alta, o movimento acaba aproximando os nós em algum momento.
+     - [HIP] Com 20 nós a rede é densa e o AODV quase sempre acha rota (só 5 fluxos
+       zerados), mas OLSR e DSDV zeram 87-106 fluxos NA MESMA TOPOLOGIA (a seed da
+       mobilidade é igual entre protocolos). Logo não é só partição de rede: é
+       falha do protocolo proativo em convergir/usar a rota (enlaces "zona
+       cinzenta" em que o broadcast de controle passa de vez em quando, mas o
+       unicast de dados não; ou colisões repetidas de broadcast). Vale
+       investigar com o log de rotas.
+     - Com 10 nós o AODV zera MAIS fluxos (44 vs 5): rede mais esparsa => mais
+       partições, e protocolo reativo não consegue descobrir rota inexistente.
+ 4.3 PDR baixo (45-80%) com carga baixa (3%): comparar com literatura/IoT real.
+     Em redes de sensores reais, perda de 20-50% sem congestionamento indica
+     cobertura/alcance insuficiente. Aqui o alcance (~300 m) é comparável à área
+     (500 m): pares nos cantos opostos (~700 m) NUNCA conseguem 1 salto. Mudar a
+     densidade ou a potência mudaria muito o resultado. [HIP: nº exato de saltos
+     não foi medido.]
+ 4.4 Delay do AODV com cauda longa (10 nós, 10-20 m/s).
+     Mediana ~9-11 ms, média ~13-14 ms, máximo ~74 a 108 ms; em rodadas sem a
+     correção de RNG chegou a 400-640 ms por fluxo. Uma entrega de 100+ ms em
+     rede de ~3 saltos não é tempo de transmissão: é pacote ESPERANDO (fila do
+     AODV durante descoberta de rota). Para IoT com requisito de tempo real
+     (controle, alarme), usar a MÉDIA esconde o problema; reportar mediana,
+     percentis 95/99 e máximo.
+ 4.5 Atraso e jitter só consideram pacotes ENTREGUES (viés de sobrevivência).
+     O DSDV/OLSR parece "mais rápido" (6-8 ms) em parte porque os pacotes difíceis
+     (que o AODV consegue entregar devagar) simplesmente se perdem e não entram
+     na média. Comparar atraso entre protocolos com PDRs diferentes não é
+     "maçã com maçã". Recomendado reportar atraso junto do PDR, ou comparar
+     apenas fluxos entregues por todos.
+ 4.6 Throughput medido acima da carga oferecida (artefato).
+     Throughput por fluxo = bytes recebidos / (último rx - primeiro tx). Mede
+     só o período em que o fluxo ESTEVE ATIVO, não a janela inteira de 103 s.
+     Consequências: (a) 511 de 2880 fluxos (20 nós) e 656 (10 nós) ficam acima de
+     0,0842 Mbps, na prática por margem pequena (até +5%, só 2 fluxos além disso;
+     o maior, 0,115 Mbps, tem PDR 0,1%, ou seja, poucos pacotes numa duração
+     minúscula); (b) fluxos com PDR < 50% e alguma recepção mostram throughput
+     ~23-32% MAIOR do que mostraria se medido na janela inteira. Isto superestima
+     o throughput de fluxos intermitentes. O PDR (pacotes recebidos / enviados
+     pela aplicação) é a métrica mais fiel; o throughput deveria ser lido como
+     "vazão enquanto ativo".
+ 4.7 Alta variabilidade entre repetições (CV 20-40%; desvio do PDR ~15-20 pontos
+     percentuais) e protocolos próximos em 10 nós.
+     O que mais varia o resultado é a topologia sorteada, não o protocolo. Com 60
+     repetições, IC 95% do PDR ~ +-5 pp. Consequência prática: UMA execução
+     isolada não representa o protocolo; e diferenças < ~5 pp não são conclusivas.
+ 4.8 Comparação entre protocolos usa os mesmos mundos (mesma seed de mobilidade
+     por número de run) => os dados são PAREADOS por run. Os testes usados
+     (Mann-Whitney independente) ignoram esse pareamento e perdem poder;
+     Wilcoxon de postos sinalizados pareado seria mais sensível. Sugestão
+     estatística (ainda não aplicada).
+ 4.9 Delay/jitter com NaN: se alguma execução ficar sem nenhum pacote recebido,
+     seu delay/jitter é indefinido (NaN), não 0 (decisão pendente, Registro 1). Na
+     rodada final de 60 repetições não houve nenhuma execução inteira sem
+     recepção (antes da correção houve 1 em 720, OLSR 10 nós 1 m/s run 33).
+
+
+5. LIMITES DO MODELO PARA A LEITURA "IoT"
+-----------------------------------------
+ - Sem modelo de energia: não dá para falar em vida útil de bateria. Proativos
+   (OLSR/DSDV) gastam rádio o tempo todo com mensagens de controle; reativo
+   (AODV) gasta nas descobertas. Isso importaria muito em IoT.
+ - Sem métrica de overhead de roteamento (bytes/pacotes de controle).
+ - 4 fluxos fixos, tráfego CBR contínuo; IoT real costuma ser esporádico,
+   orientado a eventos e com payload pequeno (dezenas de bytes).
+ - 802.11b a 11 Mbps e 7,5 dBm não é a camada física típica de IoT.
+ - Mobilidade Random Waypoint (nós sempre em movimento, mesma velocidade para
+   todos); sensores fixos ou com mobilidade heterogênea comportam-se diferente.
+ - Propagação de espaço livre sem sombreamento/obstáculos/multipercurso: o
+   alcance real em ambiente interno/urbano seria menor e mais irregular.
+ - A uma só área e 2 densidades (10 e 20 nós).
+
+
+6. CONCLUSÃO DA "PRIMEIRA OLHADA"
+---------------------------------
+ Os resultados são, no geral, FISICAMENTE COERENTES com o cenário: perdas
+ dominadas por conectividade (não por carga), proativos degradam com mobilidade,
+ AODV é robusto à mobilidade mas paga em latência, e o overhead cresce com o
+ número de nós. Nada indica erro grosseiro de simulação.
+ Os pontos que mais merecem atenção ao escrever as conclusões são: (1) o PDR é
+ bimodal por fluxo e a média esconde isso; (2) a cauda de atraso do AODV; (3) o
+ viés de sobrevivência do atraso; (4) o throughput medido só no período ativo;
+ (5) a quantidade de fluxos zerados em OLSR/DSDV na mesma topologia em que o AODV
+ funciona (a investigar); e (6) a forte dependência da topologia sorteada.

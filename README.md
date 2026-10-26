@@ -98,7 +98,7 @@ cd $NS3_DIR
 
 ### 4.1 Execução de um cenário único
 
-O programa **não aceita parâmetros de linha de comando** — o `CommandLine` em `main()` não registra nenhum `cmd.AddValue`, então `./ns3 run scratch/manet-routing` sempre executa os dois estágios inteiros (3 protocolos × 4 velocidades × 60 repetições = 720 execuções, a 20 nós e de novo a 10 nós) de uma vez; não há como rodar isoladamente uma única combinação a partir da linha de comando.
+O programa, sem argumentos, executa os dois estágios inteiros (3 protocolos × 4 velocidades × 60 repetições = 720 execuções, a 20 nós e de novo a 10 nós) de uma vez. Opcionalmente aceita filtros para dividir o trabalho entre processos: `--protocol=aodv|olsr|dsdv`, `--stage=20n|10n`, `--speed=1|5|10|20` e `--outDir=<pasta>` (é o que `scripts/run_batch.sh` usa para rodar 24 partes em paralelo; `JOBS=1 bash scripts/run_batch.sh` volta ao modo sequencial).
 
 Para testar rapidamente um único caso (ex.: durante o desenvolvimento), o caminho é editar temporariamente as constantes `PROTOCOLS`, `SPEEDS`, `NUM_RUNS` e/ou a lista `STAGES` no topo de `src/manet-routing.cc` para conter só o que se quer testar, recompilar (`./ns3 build`) e rodar — desfazendo a alteração antes de gerar os dados finais da matriz completa.
 
@@ -268,7 +268,7 @@ pip install pandas numpy matplotlib scipy            # dependências Python (Se�
 bash scripts/run_batch.sh
 ```
 
-Isso cria o link do `.cc` dentro do ns-3, compila (`./ns3 build`) e roda os dois estágios completos — matriz-base (720 execuções, 20 nós) e extensão (720 execuções, 10 nós), 1440 no total — ver Seção 4 para os comandos manuais equivalentes, e a Seção 4.1 para como testar um único cenário (o programa não aceita parâmetros de linha de comando, então "um cenário" exige editar constantes no `.cc`, como explicado lá).
+Isso cria o link do `.cc` dentro do ns-3, compila (`./ns3 build`) e roda os dois estágios completos — matriz-base (720 execuções, 20 nós) e extensão (720 execuções, 10 nós), 1440 no total — ver Seção 4 para os comandos manuais equivalentes, e a Seção 4.1 para como testar um único cenário (o programa aceita `--protocol`, `--stage`, `--speed` e `--outDir` para rodar só uma parte da matriz, como explicado lá).
 
 ### 9.4 Parâmetros usados
 
