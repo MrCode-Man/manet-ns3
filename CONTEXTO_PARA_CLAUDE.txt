@@ -1,0 +1,108 @@
+CONTEXTO PARA UM FUTURO CLAUDE — LEIA ANTES DE MEXER NESTE REPOSITÓRIO
+======================================================================
+Data da sessão descrita: 2026-10-26 (segunda-feira).
+Quem pediu e conduziu a alteração: "Don Corleone" (apelido combinado do dono do
+projeto; no git o usuário aparece como MrCode-Man). A execução técnica foi feita
+com o Claude Code (modelo Claude Sonnet 5.5) a pedido dele, passo a passo.
+Branch onde tudo está: "analise" (local e em origin/analise). A "main" só recebeu
+o merge inicial que a igualou à "dev"; a versão final do trabalho será montada
+em outra branch.
+
+1. O QUE É O PROJETO
+--------------------
+Trabalho de faculdade (redes / MANET) com ns-3: compara AODV, OLSR e DSDV em
+Wi-Fi 802.11b ad hoc, 4 velocidades (1, 5, 10, 20 m/s), 60 repetições, em dois
+estágios: 20 nós (base) e 10 nós (extensão). Métricas: PDR, throughput, atraso e
+jitter. A matéria também cobra ANÁLISE ESTATÍSTICA, e os gráficos são
+aproveitados em outra matéria (por isso o professor quer o visual antigo — ver
+pendências).
+Arquivos principais:
+  src/manet-routing.cc   simulador (vai para $NS3_DIR/scratch/ por symlink)
+  scripts/run_batch.sh   compila, roda (em paralelo), junta resultados, chama analyze
+  scripts/analyze.py     validação, agregação, estatística e gráficos
+  data/raw, data/processed, figures   saídas (as pastas bkp/ são ignoradas pelo git)
+  REGISTRO_1_mudancas.txt     o que foi feito, em detalhe (com tempos)
+  REGISTRO_2_analise_iot.txt  leitura dos resultados em termos de rede/IoT + alertas
+Ambiente: WSL2, ns-3 em ~/ns-3-allinone (export NS3_DIR=$HOME/ns-3-allinone),
+Python com pandas/scipy/matplotlib (sem statsmodels). Máquina: notebook i7-1255U,
+12 threads.
+
+2. O QUE ACONTECEU NESTA SESSÃO (resumo; detalhes no REGISTRO_1)
+-----------------------------------------------------------------
+ 1) A main foi igualada à dev com um merge commit (SEM force-push) e enviada.
+ 2) O dono desconfiou que os gráficos "usavam tudo" sem tratamento estatístico.
+    Análise: o script não filtra outliers (e não deve), mas faltavam testes de
+    hipótese, tabela descritiva e legendas. Foram adicionados em analyze.py.
+ 3) Ao investigar um OLSR com 0% de entrega e atrasos extremos do AODV, achamos
+    um problema de REPRODUTIBILIDADE: o resultado de cada execução dependia de
+    quantas execuções vieram antes no mesmo processo, por causa do contador global
+    de streams aleatórios do ns-3 (RngSeedManager::g_nextStreamIndex), que só a
+    mobilidade tinha fixado. Correção em MontarCenario: streams explícitos para
+    Wi-Fi e roteamento + ResetNextStreamIndex(). IMPORTANTE: streams explícitos
+    sozinhos NÃO bastam (testado); o reset é necessário. Não remova nenhum dos dois
+    sem refazer o teste de determinismo (repetir a mesma config no mesmo processo
+    e comparar).
+ 4) 60 repetições refeitas com a correção: conclusões inalteradas (0 de 96
+    células diferem das 60 antigas, commit 7172f1d, após Holm).
+ 5) Execução paralela: o .cc ganhou --protocol/--stage/--speed/--outDir e o
+    run_batch.sh roda 24 partes (nº de processos = JOBS, padrão núcleos-2). CSV
+    idêntico ao sequencial (cmp byte a byte). 78 min 43 s -> 30 min 02 s.
+    Não é "multithread" de uma simulação (impossível para Wi-Fi ad hoc); é
+    paralelismo entre execuções independentes.
+
+3. DECISÕES JÁ TOMADAS PELO DONO (respeite)
+-------------------------------------------
+ - Não remover outliers automaticamente.
+ - Os dois .txt de registro ficam só na branch analise; NÃO vão para a versão final.
+ - Cout por execução permanece (não influencia o tempo).
+ - Push da analise foi autorizado e feito. Qualquer outro push/merge para main ou
+   dev: PERGUNTE antes.
+
+4. PENDÊNCIAS (aguardam decisão do dono)
+----------------------------------------
+ a) Visual dos gráficos: o professor pediu "mais ou menos como estava". O visual
+    novo (estrelas de significância e legendas no PNG/PDF) pode ser revertido
+    mantendo a estatística apenas nos CSVs (descriptive_*, stats_tests_*,
+    stats_nodes_comparison.csv). Não reverta sem confirmar.
+ b) Delay/jitter de execução SEM nenhum pacote recebido: hoje viram NaN (indefinido);
+    antes eram 0. Na rodada final de 60 repetições não houve nenhuma dessas
+    execuções, então hoje não muda os números.
+ c) Se o reset/streams explícitos entram na versão final (em outra branch).
+ d) Investigar por que OLSR/DSDV zeram 87-106 fluxos em 20 nós onde o AODV só
+    zera 5, na mesma topologia (REGISTRO_2, item 4.2).
+ e) Sugestão estatística não aplicada: teste PAREADO por run (Wilcoxon), pois os
+    protocolos compartilham a mesma topologia por número de run.
+ f) NUM_RUNS no .cc deve estar em 60 para entrega (está em 60 agora).
+
+5. ARMADILHAS DESTE AMBIENTE
+----------------------------
+ - run_batch.sh MOVE data/raw, data/processed e figures para bkp/ no início e
+   RECRIA tudo; cada rodada substitui o bkp/ anterior. Se interromper no meio, os
+   arquivos rastreados aparecem como apagados: restaure com
+   "git checkout -- data figures". O histórico completo está no git.
+ - Rodar o run_batch.sh COM O .cc em NUM_RUNS pequeno (teste) sobrescreve os dados
+   do projeto; commit separado ao testar.
+ - Não use "pkill -f" com padrão que apareça na própria linha de comando do shell
+   (matou o próprio comando uma vez). Use o truque [x]padrão.
+ - Rodar mais de um "./ns3 run" ao mesmo tempo pode dar conflito de cmake; o
+   run_batch.sh evita isso compilando UMA vez e chamando o binário direto
+   (build/scratch/ns3-dev-manet-routing-default, com LD_LIBRARY_PATH=build/lib).
+ - Subir a prioridade (renice) de um processo já iniciado exige root; os processos
+   rodam com nice 19 de propósito, para não pesar no PC do dono.
+ - Um número errado circulou na sessão ("192 células"); o correto é 96
+   (4 métricas x 12 combinações x 2 estágios). O commit 1117edc ainda diz 192.
+ - Ritmo da simulação: ~3 a 6 s por execução; 1440 execuções.
+
+6. COMO VERIFICAR RAPIDAMENTE QUE TUDO ESTÁ OK
+----------------------------------------------
+   export NS3_DIR=$HOME/ns-3-allinone
+   git status                          # deve estar limpo na branch analise
+   JOBS=10 bash scripts/run_batch.sh   # ~30 min; deve terminar APROVADO nos 2 relatórios
+   git status                          # CSVs de data/raw NÃO devem mudar (determinismo)
+ Se data/raw/resultados_*.csv mudarem sem você ter alterado o .cc, algo quebrou o
+ isolamento entre execuções (veja a seção 2, item 3).
+
+7. MEMÓRIA DO CLAUDE
+--------------------
+ Há uma nota de projeto em ~/.claude/projects/-home-gabriel-manet-ns3/memory/
+ (project_analise_branch_fix_rng.md) com um resumo curto deste estado.
