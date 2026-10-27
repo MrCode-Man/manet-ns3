@@ -1,0 +1,49 @@
+\begin{thebibliography}{}
+
+\bibitem[Al-khatib and Hassan 2018]{alkhatib2018}
+Al-khatib, A.~A. and Hassan, R. (2018).
+\newblock Performance evaluation of {AODV}, {DSDV}, and {DSR} routing protocols
+  in {MANET} using {NS-2} simulator.
+\newblock In {\em Lecture Notes in Data Engineering and Communications
+  Technologies}, volume~5. Springer.
+
+\bibitem[Al-Maliki and Al-Asadi 2024]{almaliki2024}
+Al-Maliki, H. H.~K. and Al-Asadi, H. A.~A. (2024).
+\newblock Evaluating end-to-end delay in road-based routing protocols for
+  {VANET}s using snake optimization.
+\newblock {\em Wasit Journal of Computer and Mathematics Science}, 3(2):51--61.
+
+\bibitem[Al-Zahrani 2020]{alzahrani2020}
+Al-Zahrani, F.~A. (2020).
+\newblock On modeling optimizations and enhancing routing protocols for
+  wireless multihop networks.
+\newblock {\em IEEE Access}, 8:117687--117705.
+
+\bibitem[{Arun Kumar} et~al. 2008]{arunkumar2008}
+{Arun Kumar}, B.~R., Reddy, L.~C., and Hiremath, P.~S. (2008).
+\newblock Performance comparison of wireless mobile ad-hoc network routing
+  protocols.
+\newblock {\em International Journal of Computer Science and Network Security},
+  8(6):337--343.
+
+\bibitem[Chrysoula 2012]{chrysoula2012}
+Chrysoula, S. (2012).
+\newblock Performance comparison of {MANET} routing protocols based on
+  real-life scenarios.
+\newblock Master's thesis, University of Macedonia.
+
+\bibitem[Quadri et~al. 2025]{quadri2025}
+Quadri, S.~A., Dapke, P.~P., Nagare, S.~M., Ali, R.~M., Gaikwad, R.~M., and
+  Baheti, M.~R. (2025).
+\newblock Comparative evaluation of {AODV}, {OLSR}, and {DSDV} routing protocol
+  performance in {MANET} using {NS-3}.
+\newblock {\em International Journal of Advanced Research in Computer Science},
+  16(2):1--10.
+
+\bibitem[Shrivastava and Vishwamitra 2021]{shrivastava2021}
+Shrivastava, P.~K. and Vishwamitra, L.~K. (2021).
+\newblock Comparative analysis of proactive and reactive routing protocols in
+  {VANET} environment.
+\newblock {\em Measurement: Sensors}, 16:100051.
+
+\end{thebibliography}
