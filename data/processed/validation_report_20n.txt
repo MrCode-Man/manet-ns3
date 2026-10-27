@@ -3,11 +3,12 @@ RELATÓRIO DE VALIDAÇÃO
 ==============================================================================
 
 INFORMAÇÕES:
-  - 2880 linhas lidas de /manet-ns3/data/raw/resultados_20n.csv
+  - 2880 linhas lidas de C:\Users\guilh\ClionProjects\manet-ns3\data\raw\resultados_20n.csv
   - execuções: 720 (esperado 720)
 
-AVISOS (1):
-  ! 195/2880 fluxos sem nenhuma recepção, por protocolo: {'AODV': 7, 'DSDV': 118, 'OLSR': 70}
+AVISOS (2):
+  ! 199/2880 fluxos sem nenhuma recepção, por protocolo: {'AODV': 5, 'DSDV': 114, 'OLSR': 80}
+  ! 1 execuções com ZERO pacotes recebidos (todos os 4 fluxos).
 
 ERROS (0):
 

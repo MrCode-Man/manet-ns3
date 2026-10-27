@@ -11,6 +11,11 @@
  *     ./ns3 build
  *     ./ns3 run scratch/manet-routing
  *
+ *
+ * Opcionalmente (para dividir o trabalho entre processos, como faz
+ * scripts/run_batch.sh): --protocol=aodv|olsr|dsdv --stage=20n|10n
+ * --speed=1|5|10|20 --outDir=<pasta>. Sem esses argumentos, roda tudo.
+ *
  * O programa, sozinho:
  *   1) roda uma checagem rápida de cada protocolo (AODV, OLSR, DSDV),
  *      confirmando que cada um foi realmente instalado nos nós antes de
@@ -128,6 +133,7 @@
 #include "ns3/dsdv-module.h"
 #include "ns3/flow-monitor-module.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -169,11 +175,12 @@ static const double      TX_POWER_DBM  = 7.5;    // potência de transmissão, e
 static const double      CARRIER_HZ    = 2.412e9; // frequência de portadora (canal 1, 2,4 GHz)
 static const std::string PHY_MODE      = "DsssRate11Mbps"; // taxa 802.11b usada por dados e controle
 
-static const std::string OUT_DIR          = "resultado_simulacao";
-static const std::string OUT_CSV_20N      = OUT_DIR + "/resultados_20n.csv";
-static const std::string OUT_CSV_10N      = OUT_DIR + "/resultados_10n.csv";
-static const std::string OUT_LOG          = OUT_DIR + "/log.txt";
-static const std::string OUT_FLOWMON_DIR  = OUT_DIR + "/flowmon";
+// Pasta de saída: "resultado_simulacao" por padrão; --outDir=<pasta> muda (usado
+// para rodar várias partes da matriz em paralelo sem que escrevam nos mesmos
+// arquivos). Os caminhos derivados são montados em main() depois do Parse.
+static std::string OUT_DIR          = "resultado_simulacao";
+static std::string OUT_LOG          = OUT_DIR + "/log.txt";
+static std::string OUT_FLOWMON_DIR  = OUT_DIR + "/flowmon";
 
 // ---- Estágios da matriz experimental: base (20 nós) + extensão (10 nós) ----
 // Cada estágio roda a mesma matriz 3 protocolos x 4 velocidades x 60 runs,
@@ -187,10 +194,16 @@ struct Stage
   std::string label; // usado nas mensagens de progresso
 };
 
-static const std::vector<Stage> STAGES = {
-  {NODES_BASE, OUT_CSV_20N, "20n", "matriz-base (20 nos)"},
-  {NODES_EXT,  OUT_CSV_10N, "10n", "extensao (10 nos)"},
-};
+// Lista dos estágios (o CSV de cada um depende de OUT_DIR, por isso é montada
+// em main() depois de ler --outDir, e não aqui como constante).
+static std::vector<Stage>
+MontarEstagios ()
+{
+  return {
+    {NODES_BASE, OUT_DIR + "/resultados_20n.csv", "20n", "matriz-base (20 nos)"},
+    {NODES_EXT,  OUT_DIR + "/resultados_10n.csv", "10n", "extensao (10 nos)"},
+  };
+}
 
 // =============================================================================
 // Log em arquivo: um std::streambuf que duplica tudo que é escrito em
@@ -374,6 +387,46 @@ MontarCenario (const std::string &protocol, double speed, uint32_t run, uint32_t
   // por acaso.
   streamIndex += mobility.AssignStreams (c.nodes, streamIndex);
 
+  // ---- Streams explícitos para Wi-Fi e roteamento ----
+  // Toda variável aleatória SEM stream explícito recebe um automático, tirado
+  // de um contador global do processo (RngSeedManager::GetNextStreamIndex)
+  // que não volta a zero entre execuções. Deixar o MAC Wi-Fi (backoff) e o
+  // protocolo de roteamento (jitter dos HELLO/TC/updates) nesse contador
+  // fazia o resultado de um run depender de quantas execuções vieram antes
+  // dele no mesmo processo (a mesma configuração dava 50% e depois 0% de
+  // PDR). Aqui eles entram no MESMO contador manual (streamIndex) da
+  // mobilidade, logo depois dela — os índices da mobilidade não mudam, então
+  // a topologia/movimento continuam idênticos aos de antes.
+  streamIndex += WifiHelper::AssignStreams (c.devices, streamIndex);
+  if (protocol == "aodv")
+    {
+      streamIndex += aodv.AssignStreams (c.nodes, streamIndex);
+    }
+  else if (protocol == "olsr")
+    {
+      streamIndex += olsr.AssignStreams (c.nodes, streamIndex);
+    }
+  else // dsdv: o DsdvHelper não tem AssignStreams, então atribui-se direto em cada nó
+    {
+      for (uint32_t i = 0; i < c.nodes.GetN (); ++i)
+        {
+          Ptr<Ipv4ListRouting> list = DynamicCast<Ipv4ListRouting> (
+              c.nodes.Get (i)->GetObject<Ipv4> ()->GetRoutingProtocol ());
+          int16_t priority = 0;
+          Ptr<dsdv::RoutingProtocol> rp =
+              DynamicCast<dsdv::RoutingProtocol> (list->GetRoutingProtocol (0, priority));
+          streamIndex += rp->AssignStreams (streamIndex);
+        }
+    }
+
+  // Rede de segurança: testado, atribuir streams explícitos SOZINHO não basta
+  // (ainda sobra alguma variável aleatória interna do ns-3 fora do alcance de
+  // AssignStreams, e o resultado continuava variando com a ordem das
+  // execuções). Zerar o contador global faz qualquer variável restante
+  // começar sempre do mesmo ponto em cada execução. Com os dois juntos:
+  // mesmo protocolo + velocidade + run + nós => sempre o mesmo resultado.
+  RngSeedManager::ResetNextStreamIndex ();
+
   return c;
 }
 
@@ -556,6 +609,8 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
             }
         }
       lost = (tx > rx) ? (tx - rx) : 0;
+      somaTx += tx;
+      somaRx += rx;
 
       // PDR: percentual de pacotes transmitidos que chegaram ao destino.
       double pdrPct = (tx > 0) ? (100.0 * rx / tx) : 0.0;
@@ -572,9 +627,6 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
       csv << protocol << "," << speed << "," << run << "," << flowId << "," << tx << "," << rx
           << "," << lost << "," << rxBytes << "," << throughputMbps << "," << pdrPct << ","
           << delayMs << "," << jitterMs << "\n";
-
-      somaTx += tx;
-      somaRx += rx;
     }
   csv.close ();
 
@@ -586,13 +638,56 @@ RunExperiment (const std::string &protocol, double speed, uint32_t run, uint32_t
 }
 
 // =============================================================================
-// main(): roda tudo sozinho, sem nenhum argumento de linha de comando.
+// main(): sem argumentos, roda tudo sozinho (3 protocolos x 4 velocidades x
+// NUM_RUNS runs, a 20 e a 10 nós). Argumentos opcionais, para dividir o
+// trabalho entre processos (scripts/run_batch.sh usa isso):
+//   --protocol=aodv|olsr|dsdv|all   (padrão: all)
+//   --stage=20n|10n|all             (padrão: all)
+//   --speed=1|5|10|20|all           (padrão: all; velocidade em m/s)
+//   --outDir=<pasta>                (padrão: resultado_simulacao)
+// Cada execução é independente das outras (ver reset dos streams em
+// MontarCenario), então o resultado de um (protocolo, velocidade, run) é o
+// mesmo rodando tudo num processo só ou em partes.
 // =============================================================================
 int
 main (int argc, char *argv[])
 {
-  CommandLine cmd (__FILE__); // nenhuma opção registrada: nada é lido do usuário
+  std::string protocolFilter = "all";
+  std::string stageFilter    = "all";
+  std::string speedFilter    = "all";
+  std::string outDir         = OUT_DIR;
+  CommandLine cmd (__FILE__);
+  cmd.AddValue ("protocol", "aodv, olsr, dsdv ou all", protocolFilter);
+  cmd.AddValue ("stage", "20n, 10n ou all", stageFilter);
+  cmd.AddValue ("speed", "1, 5, 10, 20 (m/s) ou all", speedFilter);
+  cmd.AddValue ("outDir", "pasta de saida (csv, log, flowmon)", outDir);
   cmd.Parse (argc, argv);
+
+  OUT_DIR         = outDir;
+  OUT_LOG         = OUT_DIR + "/log.txt";
+  OUT_FLOWMON_DIR = OUT_DIR + "/flowmon";
+
+  std::vector<std::string> protocols;
+  for (const std::string &p : PROTOCOLS)
+    {
+      if (protocolFilter == "all" || protocolFilter == p) protocols.push_back (p);
+    }
+  std::vector<Stage> stages;
+  for (const Stage &st : MontarEstagios ())
+    {
+      if (stageFilter == "all" || stageFilter == st.tag) stages.push_back (st);
+    }
+  std::vector<double> speeds;
+  for (double sp : SPEEDS)
+    {
+      if (speedFilter == "all" || std::abs (std::stod (speedFilter) - sp) < 1e-9) speeds.push_back (sp);
+    }
+  if (protocols.empty () || stages.empty () || speeds.empty ())
+    {
+      std::cerr << "ERRO: --protocol=" << protocolFilter << " / --stage=" << stageFilter
+                << " / --speed=" << speedFilter << " nao corresponde a nenhuma combinacao." << std::endl;
+      return 1;
+    }
 
   std::filesystem::create_directories (OUT_DIR);
   std::filesystem::create_directories (OUT_FLOWMON_DIR);
@@ -603,14 +698,14 @@ main (int argc, char *argv[])
   TeeBuf teeBuf (std::cout.rdbuf (), logFile.rdbuf ());
   std::streambuf *oldCoutBuf = std::cout.rdbuf (&teeBuf);
 
-  const uint32_t totalEtapas = 1 + static_cast<uint32_t> (STAGES.size ());
+  const uint32_t totalEtapas = 1 + static_cast<uint32_t> (stages.size ());
 
   // ---- Etapa 1: valida rapidamente cada protocolo antes de confiar nele ----
   std::cout << "===================================================" << std::endl;
-  std::cout << " ETAPA 1/" << totalEtapas << ": validando AODV, OLSR e DSDV" << std::endl;
+  std::cout << " ETAPA 1/" << totalEtapas << ": validando os protocolos selecionados" << std::endl;
   std::cout << "===================================================" << std::endl;
   bool todasOk = true;
-  for (const std::string &p : PROTOCOLS)
+  for (const std::string &p : protocols)
     {
       todasOk = todasOk && ValidarProtocolo (p);
     }
@@ -628,15 +723,15 @@ main (int argc, char *argv[])
   // (3 protocolos x 4 velocidades x 60 runs cada), uma a 20 nós (base) e
   // outra a 10 nós (extensão — variável experimental própria do grupo).
   const uint32_t totalPorEtapa =
-      static_cast<uint32_t> (PROTOCOLS.size () * SPEEDS.size () * NUM_RUNS);
+      static_cast<uint32_t> (protocols.size () * speeds.size () * NUM_RUNS);
 
-  for (size_t stageIdx = 0; stageIdx < STAGES.size (); ++stageIdx)
+  for (size_t stageIdx = 0; stageIdx < stages.size (); ++stageIdx)
     {
-      const Stage &st = STAGES[stageIdx];
+      const Stage &st = stages[stageIdx];
 
       std::cout << "\n===================================================" << std::endl;
       std::cout << " ETAPA " << (2 + stageIdx) << "/" << totalEtapas << ": " << st.label << " ("
-                << PROTOCOLS.size () << " protocolos x " << SPEEDS.size () << " velocidades x "
+                << protocols.size () << " protocolos x " << speeds.size () << " velocidades x "
                 << NUM_RUNS << " runs = " << totalPorEtapa << " execucoes, " << st.nodes
                 << " nos)" << std::endl;
       std::cout << "===================================================" << std::endl;
@@ -650,9 +745,9 @@ main (int argc, char *argv[])
       }
 
       uint32_t execucao = 0;
-      for (const std::string &p : PROTOCOLS)
+      for (const std::string &p : protocols)
         {
-          for (double s : SPEEDS)
+          for (double s : speeds)
             {
               for (uint32_t r = 1; r <= NUM_RUNS; ++r)
                 {

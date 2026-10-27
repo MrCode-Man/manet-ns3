@@ -1,3 +1,9 @@
 data/raw/bkp/
 data/processed/bkp/
 figures/bkp/
+
+# artefatos de compilação do LaTeX (article/artigo.pdf e artigo.bbl são versionados; o resto não)
+article/*.aux
+article/*.blg
+article/*.log
+article/*.out

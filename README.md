@@ -30,7 +30,7 @@ Trabalho Final de Redes Móveis (IFG, Câmpus Inhumas, 2026/2). Investiga como a
 | Velocidade no RandomWaypoint | constante = velocidade da linha da matriz, para todos os nós | Torna o nível experimental (1/5/10/20 m/s) inequívoco |
 | Pause time | 1,0 s, constante | — |
 | Distribuição inicial | uniforme em [0,500]² | `RandomRectanglePositionAllocator` |
-| Streams da mobilidade | fixados (`AssignStreams`) | Para o mesmo `run`, a topologia inicial e o movimento são idênticos nos 3 protocolos — a diferença nos resultados vem só do protocolo |
+| Streams de aleatoriedade (mobilidade, Wi-Fi **e** protocolo de roteamento) | fixados explicitamente (`AssignStreams` + `ResetNextStreamIndex`) | Para o mesmo `run`, a topologia inicial e o movimento são idênticos nos 3 protocolos — a diferença nos resultados vem só do protocolo. O RNG interno do Wi-Fi (backoff) e de cada protocolo (jitter de RREQ/HELLO/TC) também recebe stream explícito, pelo mesmo motivo — ver nota na Seção 6.1 |
 | Fluxos UDP | fluxo *i*: nó *i* → nó (19−*i*), porta 9+*i*, 1024 B a cada 0,1 s | Determinístico e reproduzível |
 | Repetições por combinação | **60** (acima do mínimo de 5 exigido pelo enunciado) | Maior robustez estatística: médias e IC 95% mais estáveis entre protocolo×velocidade |
 | Escopo do XML do FlowMonitor | amostra: 1 arquivo por combinação protocolo×velocidade×estágio (`run = 1`), 24 arquivos no total — não as 1440 execuções | Exportar o XML completo pesaria muito no repositório e deixaria a simulação mais lenta; a amostra já demonstra o uso do `SerializeToXmlFile` e serve de referência detalhada por combinação |
@@ -47,10 +47,10 @@ O ns-3 é instalado **fora** deste repositório (ex.: `~/ns-3-allinone`). Preenc
 
 | Item | Comando | Valor usado |
 |---|---|---|
-| Versão do ns-3 | `cd $NS3_DIR && ./ns3 --version` | _preencher_ |
-| Sistema operacional | `lsb_release -a` | _preencher_ |
-| Compilador | `g++ --version` | _preencher_ |
-| Python | `python3 --version` | _preencher_ |
+| Versão do ns-3 | `cd $NS3_DIR && ./ns3 --version` | ns-3.48 |
+| Sistema operacional | `lsb_release -a` | Ubuntu 24.04 (em container Docker/WSL2 — setup específico da máquina usada para rodar as simulações, sem dual boot) |
+| Compilador | `g++ --version` | g++ padrão do Ubuntu 24.04 (versão exata não registrada neste momento; confira com o comando ao lado antes da entrega) |
+| Python | `python3 --version` | 3.12 |
 
 Dependências Python: `pandas`, `numpy`, `matplotlib` (opcional: `scipy`, para o IC exato; sem ele o script usa uma tabela de t de Student para 95%).
 
@@ -72,8 +72,13 @@ manet-ns3/
 │   ├── raw/                    # resultados_20n.csv, resultados_10n.csv, log.txt, flowmon/
 │   │   └── flowmon/             # amostra de XML do FlowMonitor (1 por protocolo×velocidade×estágio)
 │   └── processed/              # per_run_<tag>.csv, summary_<tag>.csv, validation_report_<tag>.txt
-├── figures/                    # 4 gráficos obrigatórios + boxplots por estágio, + 4 de comparação 20n/10n
-└── article/                    # artigo SBC
+├── figures/                    # 5 gráficos obrigatórios + boxplots por estágio, + 4 de comparação 20n/10n
+└── article/                    # artigo em formato SBC
+    ├── artigo.tex               # fonte LaTeX (5 páginas, modelo SBC)
+    ├── artigo.pdf               # PDF compilado, com o link do repositório destacado
+    ├── referencias.bib          # bibliografia (bibtex)
+    ├── sbc-template.sty, sbc.bst, caption2.sty  # arquivos oficiais do template SBC
+    └── documentacao-tecnica.md  # versão estendida, sem limite de páginas, com mais detalhes técnicos
 ```
 
 ## 4. Compilar e rodar a simulação completa (base + extensão)
@@ -98,7 +103,7 @@ cd $NS3_DIR
 
 ### 4.1 Execução de um cenário único
 
-O programa **não aceita parâmetros de linha de comando** — o `CommandLine` em `main()` não registra nenhum `cmd.AddValue`, então `./ns3 run scratch/manet-routing` sempre executa os dois estágios inteiros (3 protocolos × 4 velocidades × 60 repetições = 720 execuções, a 20 nós e de novo a 10 nós) de uma vez; não há como rodar isoladamente uma única combinação a partir da linha de comando.
+O programa, sem argumentos, executa os dois estágios inteiros (3 protocolos × 4 velocidades × 60 repetições = 720 execuções, a 20 nós e de novo a 10 nós) de uma vez. Opcionalmente aceita filtros para dividir o trabalho entre processos: `--protocol=aodv|olsr|dsdv`, `--stage=20n|10n`, `--speed=1|5|10|20` e `--outDir=<pasta>` (é o que `scripts/run_batch.sh` usa para rodar 24 partes em paralelo; `JOBS=1 bash scripts/run_batch.sh` volta ao modo sequencial).
 
 Para testar rapidamente um único caso (ex.: durante o desenvolvimento), o caminho é editar temporariamente as constantes `PROTOCOLS`, `SPEEDS`, `NUM_RUNS` e/ou a lista `STAGES` no topo de `src/manet-routing.cc` para conter só o que se quer testar, recompilar (`./ns3 build`) e rodar — desfazendo a alteração antes de gerar os dados finais da matriz completa.
 
@@ -184,6 +189,7 @@ Por estágio (`<tag>` = `20n` ou `10n`):
 | `figures/throughput_vs_speed_<tag>.{png,pdf}` | **Gráfico 2** — throughput × velocidade |
 | `figures/delay_vs_speed_<tag>.{png,pdf}` | **Gráfico 3** — atraso médio × velocidade |
 | `figures/jitter_vs_speed_<tag>.{png,pdf}` | **Gráfico 4** — jitter médio × velocidade |
+| `figures/aggregate_comparison_<tag>.{png,pdf}` | **Gráfico 5** — comparação agregada entre AODV/OLSR/DSDV nas 4 métricas, numa condição de mobilidade fixa (20 m/s, justificada no artigo por ser onde as diferenças entre protocolos são mais pronunciadas) |
 | `figures/boxplot_<metrica>_<tag>.png` | dispersão das 60 repetições (suplementar) |
 
 Comparação entre estágios (só gerada se os dois CSVs existirem e passarem na validação):
@@ -203,7 +209,17 @@ Todos os gráficos têm eixo X e Y com unidade, legenda com protocolo (e, nos de
 * `AssignStreams` garante que, para o mesmo `run`, a topologia inicial e o movimento são idênticos nos 3 protocolos — a diferença observada vem do protocolo, não da aleatoriedade da topologia (dentro de um mesmo estágio; a topologia em si muda entre 20n e 10n, pois o número de nós é justamente a variável manipulada).
 * Rodar `bash scripts/run_batch.sh` novamente, com o mesmo `.cc`, reproduz os mesmos números nos dois estágios.
 
-### 6.1 Rastreabilidade
+### 6.1 Bug de reprodutibilidade corrigido (RNG do Wi-Fi e dos protocolos de roteamento)
+
+Até uma revisão recente, só a mobilidade tinha `AssignStreams` explícito. O RNG interno do Wi-Fi (backoff do MAC) e dos protocolos de roteamento (jitter de retransmissão de RREQ/HELLO/TC) não tinha, e por isso pegava stream do contador automático global do ns-3 (`RngSeedManager`). Como as 1440 execuções de cada rodada completa acontecem no mesmo processo (ou, no modo paralelo, cada uma delas roda isolada num processo próprio — ver Seção 4.1), e esse contador nunca é resetado entre execuções, o resultado de uma execução acabava dependendo de **quantas execuções já tinham ocorrido antes dela**. Sintoma observado: a mesma configuração (ex. OLSR, 10 nós, 1 m/s, run 33), repetida no mesmo processo, dava PDR diferente a cada vez (50%, depois 0%, depois 75%).
+
+Corrigido em duas partes, em `MontarCenario`:
+1. `streamIndex` explícito (mesmo contador local já usado para a mobilidade) estendido para o Wi-Fi (`WifiHelper::AssignStreams`) e para o protocolo de roteamento ativo (`AodvHelper`/`OlsrHelper::AssignStreams`; para o DSDV, que não expõe esse método no helper, a atribuição é feita nó a nó, direto na instância de `dsdv::RoutingProtocol`).
+2. `RngSeedManager::ResetNextStreamIndex()` ao final de `MontarCenario`, como rede de segurança — testado e confirmado necessário: streams explícitos sozinhos (item 1) **não bastam** para eliminar a dependência de ordem; só com os dois juntos a mesma configuração dá sempre o mesmo resultado, em qualquer ordem de execução.
+
+Os dados atuais em `data/raw/`, `data/processed/` e todas as figuras em `figures/` já foram gerados com o fix completo aplicado (matriz completa, 1440 execuções, re-rodada do zero, modo paralelo).
+
+### 6.2 Rastreabilidade
 
 **Commit da versão entregue:** _preencher ao fazer o commit final, antes do envio de 15/out_ — registre aqui o hash (`git rev-parse HEAD`) do commit que corresponde exatamente ao código, dados e artigo enviados no Moodle.
 
@@ -215,7 +231,7 @@ O enunciado pede uma terceira variável experimental além de protocolo e veloci
 
 **Como rodar:** `bash scripts/run_batch.sh` já roda os dois estágios em sequência (não há como rodar só um dos dois sem editar o `.cc` — ver Seção 4.1). **Como analisar:** `python3 scripts/analyze.py` já processa os dois CSVs e, se ambos existirem e passarem na validação, gera automaticamente 4 gráficos comparando 20 vs 10 nós (Seção 5.4).
 
-**Hipótese:** com menos nós na mesma área, a rede fica menos densa — menos vizinhos por nó, rotas mais longas (mais saltos) ou até partições da rede em subgrupos desconectados. Espera-se que isso afete PDR e delay de forma diferente conforme a estratégia de cada protocolo (reativo vs proativo, Seção 1) — essa comparação é o que os gráficos `*_nodes_comparison.*` (Seção 5.4) permitem visualizar, e deve ser discutida no artigo (`article/`, ver nota ao final da Seção 9).
+**Hipótese:** com menos nós na mesma área, a rede fica menos densa — menos vizinhos por nó, rotas mais longas (mais saltos) ou até partições da rede em subgrupos desconectados. Espera-se que isso afete PDR e delay de forma diferente conforme a estratégia de cada protocolo (reativo vs proativo, Seção 1) — essa comparação é o que os gráficos `*_nodes_comparison.*` (Seção 5.4) permitem visualizar, e é discutida no artigo (`article/artigo.tex`, ver nota ao final da Seção 9).
 
 ## 8. Solução de problemas
 
@@ -268,7 +284,7 @@ pip install pandas numpy matplotlib scipy            # dependências Python (Se�
 bash scripts/run_batch.sh
 ```
 
-Isso cria o link do `.cc` dentro do ns-3, compila (`./ns3 build`) e roda os dois estágios completos — matriz-base (720 execuções, 20 nós) e extensão (720 execuções, 10 nós), 1440 no total — ver Seção 4 para os comandos manuais equivalentes, e a Seção 4.1 para como testar um único cenário (o programa não aceita parâmetros de linha de comando, então "um cenário" exige editar constantes no `.cc`, como explicado lá).
+Isso cria o link do `.cc` dentro do ns-3, compila (`./ns3 build`) e roda os dois estágios completos — matriz-base (720 execuções, 20 nós) e extensão (720 execuções, 10 nós), 1440 no total — ver Seção 4 para os comandos manuais equivalentes, e a Seção 4.1 para como testar um único cenário (o programa aceita `--protocol`, `--stage`, `--speed` e `--outDir` para rodar só uma parte da matriz, como explicado lá).
 
 ### 9.4 Parâmetros usados
 
@@ -292,19 +308,19 @@ Gera, para cada estágio, `data/processed/per_run_<tag>.csv`, `summary_<tag>.csv
 
 ### 9.8 Rastreabilidade
 
-Depois de confirmar que tudo rodou e os gráficos saíram sem erro de validação, faça o commit final (código + dados + artigo juntos) e registre o hash na Seção 6.1:
+Depois de confirmar que tudo rodou e os gráficos saíram sem erro de validação, faça o commit final (código + dados + artigo juntos) e registre o hash na Seção 6.2:
 
 ```bash
 git add -A
 git commit -m "versão entregue"
-git rev-parse HEAD      # copie esse hash para a Seção 6.1
+git rev-parse HEAD      # copie esse hash para a Seção 6.2
 ```
 
 ### 9.9 Teste decisivo
 
 Clone o repositório em um diretório **novo** (fora deste) e repita os passos 9.1 a 9.8 do zero, sem nenhum ajuste além de `NS3_DIR` e `<VERSAO>`. Se os 4 gráficos obrigatórios de cada estágio (20n e 10n) e os 4 gráficos de comparação saírem sem erro de validação, a reprodução funcionou — esse é o critério do enunciado para considerar o trabalho reproduzível.
 
-> **Nota:** a pasta `article/` ainda não existe neste repositório — o artigo em SBC (até 5 páginas), com o link do repositório destacado no corpo do texto, ainda precisa ser escrito e adicionado antes da entrega (15/out).
+> **Nota:** o artigo em SBC (5 páginas), com o link do repositório destacado ao final da Metodologia, já está em `article/artigo.tex` / `article/artigo.pdf`.
 
 ## 10. Referências
 

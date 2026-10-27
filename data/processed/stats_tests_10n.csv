@@ -1,0 +1,141 @@
+metric,test,group,statistic,p_value,p_adjusted,effect_size,significant
+pdrPct,shapiro_wilk,AODV @ 1 m/s,0.898415,0.000115212,,,True
+pdrPct,shapiro_wilk,AODV @ 5 m/s,0.948012,0.0125718,,,True
+pdrPct,shapiro_wilk,AODV @ 10 m/s,0.898869,0.000119659,,,True
+pdrPct,shapiro_wilk,AODV @ 20 m/s,0.935286,0.00335246,,,True
+pdrPct,shapiro_wilk,OLSR @ 1 m/s,0.945734,0.00986057,,,True
+pdrPct,shapiro_wilk,OLSR @ 5 m/s,0.873371,1.60474e-05,,,True
+pdrPct,shapiro_wilk,OLSR @ 10 m/s,0.944455,0.00861355,,,True
+pdrPct,shapiro_wilk,OLSR @ 20 m/s,0.954469,0.0253914,,,True
+pdrPct,shapiro_wilk,DSDV @ 1 m/s,0.96275,0.0641735,,,False
+pdrPct,shapiro_wilk,DSDV @ 5 m/s,0.954876,0.02656,,,True
+pdrPct,shapiro_wilk,DSDV @ 10 m/s,0.96101,0.0527187,,,False
+pdrPct,shapiro_wilk,DSDV @ 20 m/s,0.978504,0.368595,,,False
+pdrPct,levene,protocolos @ 1 m/s,1.08627,0.339711,,,False
+pdrPct,kruskal_wallis,protocolos @ 1 m/s,1.71361,0.424516,,0.00957324,False
+pdrPct,mann_whitney,AODV vs OLSR @ 1 m/s,1907,0.575884,0.789429,0.0594444,False
+pdrPct,mann_whitney,AODV vs DSDV @ 1 m/s,2035.5,0.217257,0.651772,0.130833,False
+pdrPct,mann_whitney,OLSR vs DSDV @ 1 m/s,1962.5,0.394715,0.789429,0.0902778,False
+pdrPct,levene,protocolos @ 5 m/s,2.39525,0.0940985,,,False
+pdrPct,kruskal_wallis,protocolos @ 5 m/s,1.55185,0.460279,,0.00866954,False
+pdrPct,mann_whitney,AODV vs OLSR @ 5 m/s,1633,0.382173,0.764346,-0.0927778,False
+pdrPct,mann_whitney,AODV vs DSDV @ 5 m/s,1758,0.82757,0.82757,-0.0233333,False
+pdrPct,mann_whitney,OLSR vs DSDV @ 5 m/s,2043.5,0.202154,0.606462,0.135278,False
+pdrPct,levene,protocolos @ 10 m/s,0.948527,0.389271,,,False
+pdrPct,kruskal_wallis,protocolos @ 10 m/s,13.1791,0.00137465,,0.0736263,True
+pdrPct,mann_whitney,AODV vs OLSR @ 10 m/s,2325,0.00590662,0.0118132,0.291667,True
+pdrPct,mann_whitney,AODV vs DSDV @ 10 m/s,2440.5,0.000781837,0.00234551,0.355833,True
+pdrPct,mann_whitney,OLSR vs DSDV @ 10 m/s,1976,0.356976,0.356976,0.0977778,False
+pdrPct,levene,protocolos @ 20 m/s,2.20915,0.112813,,,False
+pdrPct,kruskal_wallis,protocolos @ 20 m/s,20.5867,3.38578e-05,,0.115009,True
+pdrPct,mann_whitney,AODV vs OLSR @ 20 m/s,2528,0.000134328,0.000268657,0.404444,True
+pdrPct,mann_whitney,AODV vs DSDV @ 20 m/s,2565.5,5.93915e-05,0.000178174,0.425278,True
+pdrPct,mann_whitney,OLSR vs DSDV @ 20 m/s,1843.5,0.821441,0.821441,0.0241667,False
+pdrPct,kruskal_wallis,velocidades (AODV),3.30473,0.346984,,0.0138273,False
+pdrPct,kruskal_wallis,velocidades (OLSR),29.4866,1.76952e-06,,0.123375,True
+pdrPct,kruskal_wallis,velocidades (DSDV),29.4636,1.78939e-06,,0.123279,True
+throughputMbps,shapiro_wilk,AODV @ 1 m/s,0.866876,9.95539e-06,,,True
+throughputMbps,shapiro_wilk,AODV @ 5 m/s,0.930062,0.00199804,,,True
+throughputMbps,shapiro_wilk,AODV @ 10 m/s,0.892985,7.37221e-05,,,True
+throughputMbps,shapiro_wilk,AODV @ 20 m/s,0.94075,0.00585088,,,True
+throughputMbps,shapiro_wilk,OLSR @ 1 m/s,0.929665,0.00192205,,,True
+throughputMbps,shapiro_wilk,OLSR @ 5 m/s,0.884756,3.82642e-05,,,True
+throughputMbps,shapiro_wilk,OLSR @ 10 m/s,0.938219,0.00451146,,,True
+throughputMbps,shapiro_wilk,OLSR @ 20 m/s,0.964247,0.0760446,,,False
+throughputMbps,shapiro_wilk,DSDV @ 1 m/s,0.951817,0.018977,,,True
+throughputMbps,shapiro_wilk,DSDV @ 5 m/s,0.796142,1.08336e-07,,,True
+throughputMbps,shapiro_wilk,DSDV @ 10 m/s,0.961167,0.0536647,,,False
+throughputMbps,shapiro_wilk,DSDV @ 20 m/s,0.983561,0.595819,,,False
+throughputMbps,levene,protocolos @ 1 m/s,1.94034,0.146699,,,False
+throughputMbps,kruskal_wallis,protocolos @ 1 m/s,1.02136,0.600087,,0.00570594,False
+throughputMbps,mann_whitney,AODV vs OLSR @ 1 m/s,1970,0.373643,1,0.0944444,False
+throughputMbps,mann_whitney,AODV vs DSDV @ 1 m/s,1963,0.393706,1,0.0905556,False
+throughputMbps,mann_whitney,OLSR vs DSDV @ 1 m/s,1808,0.968598,1,0.00444444,False
+throughputMbps,levene,protocolos @ 5 m/s,1.02048,0.362533,,,False
+throughputMbps,kruskal_wallis,protocolos @ 5 m/s,0.757716,0.684643,,0.00423305,False
+throughputMbps,mann_whitney,AODV vs OLSR @ 5 m/s,1676,0.516851,1,-0.0688889,False
+throughputMbps,mann_whitney,AODV vs DSDV @ 5 m/s,1658,0.457674,1,-0.0788889,False
+throughputMbps,mann_whitney,OLSR vs DSDV @ 5 m/s,1902,0.594216,1,0.0566667,False
+throughputMbps,levene,protocolos @ 10 m/s,1.26131,0.285816,,,False
+throughputMbps,kruskal_wallis,protocolos @ 10 m/s,10.4431,0.00539887,,0.0583415,True
+throughputMbps,mann_whitney,AODV vs OLSR @ 10 m/s,2306,0.00797357,0.0159471,0.281111,True
+throughputMbps,mann_whitney,AODV vs DSDV @ 10 m/s,2351,0.00386008,0.0115802,0.306111,True
+throughputMbps,mann_whitney,OLSR vs DSDV @ 10 m/s,1890,0.638531,0.638531,0.05,False
+throughputMbps,levene,protocolos @ 20 m/s,1.71135,0.183596,,,False
+throughputMbps,kruskal_wallis,protocolos @ 20 m/s,17.9862,0.000124264,,0.100482,True
+throughputMbps,mann_whitney,AODV vs OLSR @ 20 m/s,2504,0.000222132,0.000666397,0.391111,True
+throughputMbps,mann_whitney,AODV vs DSDV @ 20 m/s,2492,0.000284044,0.000666397,0.384444,True
+throughputMbps,mann_whitney,OLSR vs DSDV @ 20 m/s,1748,0.786926,0.786926,-0.0288889,False
+throughputMbps,kruskal_wallis,velocidades (AODV),4.0468,0.256455,,0.0169322,False
+throughputMbps,kruskal_wallis,velocidades (OLSR),28.3298,3.09676e-06,,0.118535,True
+throughputMbps,kruskal_wallis,velocidades (DSDV),31.6016,6.34948e-07,,0.132224,True
+delayMs,shapiro_wilk,AODV @ 1 m/s,0.909631,0.000300772,,,True
+delayMs,shapiro_wilk,AODV @ 5 m/s,0.980901,0.467845,,,False
+delayMs,shapiro_wilk,AODV @ 10 m/s,0.351345,7.99605e-15,,,True
+delayMs,shapiro_wilk,AODV @ 20 m/s,0.370006,1.30413e-14,,,True
+delayMs,shapiro_wilk,OLSR @ 1 m/s,0.931223,0.0022387,,,True
+delayMs,shapiro_wilk,OLSR @ 5 m/s,0.988653,0.851198,,,False
+delayMs,shapiro_wilk,OLSR @ 10 m/s,0.971972,0.182062,,,False
+delayMs,shapiro_wilk,OLSR @ 20 m/s,0.951435,0.0182021,,,True
+delayMs,shapiro_wilk,DSDV @ 1 m/s,0.964053,0.0743895,,,False
+delayMs,shapiro_wilk,DSDV @ 5 m/s,0.842468,1.83926e-06,,,True
+delayMs,shapiro_wilk,DSDV @ 10 m/s,0.977629,0.336655,,,False
+delayMs,shapiro_wilk,DSDV @ 20 m/s,0.932529,0.00254668,,,True
+delayMs,levene,protocolos @ 1 m/s,4.99436,0.00776192,,,True
+delayMs,kruskal_wallis,protocolos @ 1 m/s,15.0931,0.000527935,,0.0843189,True
+delayMs,mann_whitney,AODV vs OLSR @ 1 m/s,2421,0.00112684,0.00225367,0.345,True
+delayMs,mann_whitney,AODV vs DSDV @ 1 m/s,2458,0.000558555,0.00167566,0.365556,True
+delayMs,mann_whitney,OLSR vs DSDV @ 1 m/s,1831,0.872815,0.872815,0.0172222,False
+delayMs,levene,protocolos @ 5 m/s,6.56706,0.00177344,,,True
+delayMs,kruskal_wallis,protocolos @ 5 m/s,24.6785,4.37646e-06,,0.137869,True
+delayMs,mann_whitney,AODV vs OLSR @ 5 m/s,2627,1.43785e-05,4.31356e-05,0.459444,True
+delayMs,mann_whitney,AODV vs DSDV @ 5 m/s,2610,2.14944e-05,4.31356e-05,0.45,True
+delayMs,mann_whitney,OLSR vs DSDV @ 5 m/s,1793,0.972785,0.972785,-0.00388889,False
+delayMs,levene,protocolos @ 10 m/s,3.7141,0.0262976,,,True
+delayMs,kruskal_wallis,protocolos @ 10 m/s,59.7149,1.07912e-13,,0.333603,True
+delayMs,mann_whitney,AODV vs OLSR @ 10 m/s,2985,5.06709e-10,1.01342e-09,0.658333,True
+delayMs,mann_whitney,AODV vs DSDV @ 10 m/s,3139,2.13602e-12,6.40806e-12,0.743889,True
+delayMs,mann_whitney,OLSR vs DSDV @ 10 m/s,2016,0.258021,0.258021,0.12,False
+delayMs,levene,protocolos @ 20 m/s,3.70356,0.026565,,,True
+delayMs,kruskal_wallis,protocolos @ 20 m/s,79.4228,5.66968e-18,,0.443703,True
+delayMs,mann_whitney,AODV vs OLSR @ 20 m/s,3100,9.06572e-12,1.81314e-11,0.722222,True
+delayMs,mann_whitney,AODV vs DSDV @ 20 m/s,3379,1.18133e-16,3.54398e-16,0.877222,True
+delayMs,mann_whitney,OLSR vs DSDV @ 20 m/s,2163,0.0570886,0.0570886,0.201667,False
+delayMs,kruskal_wallis,velocidades (AODV),23.9655,2.53977e-05,,0.100274,True
+delayMs,kruskal_wallis,velocidades (OLSR),3.79248,0.284763,,0.0158681,False
+delayMs,kruskal_wallis,velocidades (DSDV),2.04284,0.563564,,0.00854743,False
+jitterMs,shapiro_wilk,AODV @ 1 m/s,0.972411,0.191196,,,False
+jitterMs,shapiro_wilk,AODV @ 5 m/s,0.980865,0.466216,,,False
+jitterMs,shapiro_wilk,AODV @ 10 m/s,0.809999,2.41811e-07,,,True
+jitterMs,shapiro_wilk,AODV @ 20 m/s,0.837318,1.313e-06,,,True
+jitterMs,shapiro_wilk,OLSR @ 1 m/s,0.928932,0.00178968,,,True
+jitterMs,shapiro_wilk,OLSR @ 5 m/s,0.984467,0.642332,,,False
+jitterMs,shapiro_wilk,OLSR @ 10 m/s,0.964421,0.0775565,,,False
+jitterMs,shapiro_wilk,OLSR @ 20 m/s,0.955221,0.0275906,,,True
+jitterMs,shapiro_wilk,DSDV @ 1 m/s,0.952975,0.0215407,,,True
+jitterMs,shapiro_wilk,DSDV @ 5 m/s,0.910471,0.000323875,,,True
+jitterMs,shapiro_wilk,DSDV @ 10 m/s,0.973412,0.213646,,,False
+jitterMs,shapiro_wilk,DSDV @ 20 m/s,0.981884,0.513229,,,False
+jitterMs,levene,protocolos @ 1 m/s,2.31108,0.102139,,,False
+jitterMs,kruskal_wallis,protocolos @ 1 m/s,11.4944,0.00319174,,0.0642144,True
+jitterMs,mann_whitney,AODV vs OLSR @ 1 m/s,2319,0.00650023,0.0130005,0.288333,True
+jitterMs,mann_whitney,AODV vs DSDV @ 1 m/s,2394,0.00183903,0.00551709,0.33,True
+jitterMs,mann_whitney,OLSR vs DSDV @ 1 m/s,1847,0.807183,0.807183,0.0261111,False
+jitterMs,levene,protocolos @ 5 m/s,9.14262,0.000166491,,,True
+jitterMs,kruskal_wallis,protocolos @ 5 m/s,27.8517,8.95519e-07,,0.155596,True
+jitterMs,mann_whitney,AODV vs OLSR @ 5 m/s,2696,2.59963e-06,7.79888e-06,0.497778,True
+jitterMs,mann_whitney,AODV vs DSDV @ 5 m/s,2638,1.10399e-05,2.20797e-05,0.465556,True
+jitterMs,mann_whitney,OLSR vs DSDV @ 5 m/s,1713,0.649824,0.649824,-0.0483333,False
+jitterMs,levene,protocolos @ 10 m/s,5.85937,0.00343561,,,True
+jitterMs,kruskal_wallis,protocolos @ 10 m/s,50.3162,1.18569e-11,,0.281096,True
+jitterMs,mann_whitney,AODV vs OLSR @ 10 m/s,2887,1.17962e-08,2.35924e-08,0.603889,True
+jitterMs,mann_whitney,AODV vs DSDV @ 10 m/s,3037,8.58695e-11,2.57608e-10,0.687222,True
+jitterMs,mann_whitney,OLSR vs DSDV @ 10 m/s,1943,0.454502,0.454502,0.0794444,False
+jitterMs,levene,protocolos @ 20 m/s,5.29426,0.00584632,,,True
+jitterMs,kruskal_wallis,protocolos @ 20 m/s,74.939,5.33579e-17,,0.418654,True
+jitterMs,mann_whitney,AODV vs OLSR @ 20 m/s,3073,2.40754e-11,4.81508e-11,0.707222,True
+jitterMs,mann_whitney,AODV vs DSDV @ 20 m/s,3341,6.18954e-16,1.85686e-15,0.856111,True
+jitterMs,mann_whitney,OLSR vs DSDV @ 20 m/s,2072,0.154156,0.154156,0.151111,False
+jitterMs,kruskal_wallis,velocidades (AODV),33.5464,2.4698e-07,,0.140362,True
+jitterMs,kruskal_wallis,velocidades (OLSR),7.91409,0.047821,,0.0331133,True
+jitterMs,kruskal_wallis,velocidades (DSDV),4.68496,0.196374,,0.0196023,False
