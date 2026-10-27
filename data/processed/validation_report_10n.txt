@@ -3,7 +3,7 @@ RELATÓRIO DE VALIDAÇÃO
 ==============================================================================
 
 INFORMAÇÕES:
-  - 2880 linhas lidas de /manet-ns3/data/raw/resultados_10n.csv
+  - 2880 linhas lidas de C:\Users\guilh\ClionProjects\manet-ns3\data\raw\resultados_10n.csv
   - execuções: 720 (esperado 720)
 
 AVISOS (1):

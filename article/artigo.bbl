@@ -32,6 +32,12 @@ Chrysoula, S. (2012).
   real-life scenarios.
 \newblock Master's thesis, University of Macedonia.
 
+\bibitem[{ns-3 Project} 2024]{nsnam2024}
+{ns-3 Project} (2024).
+\newblock The {ns-3} network simulator, manual and documentation.
+\newblock \url{https://www.nsnam.org}.
+\newblock Versão 3.48, acessado em outubro de 2026.
+
 \bibitem[Quadri et~al. 2025]{quadri2025}
 Quadri, S.~A., Dapke, P.~P., Nagare, S.~M., Ali, R.~M., Gaikwad, R.~M., and
   Baheti, M.~R. (2025).

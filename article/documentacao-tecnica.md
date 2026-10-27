@@ -262,7 +262,7 @@ manet-ns3/
 │                                  # stats_tests_*.csv, stats_nodes_comparison.csv,
 │                                  # validation_report_*.txt
 ├── figures/                      # gráficos obrigatórios + boxplots + comparação 20 vs 10 nós
-└── paper/
+└── article/
     ├── artigo.tex / artigo.pdf   # artigo formal, formato SBC, 5 páginas
     └── documentacao-tecnica.md   # este documento
 ```

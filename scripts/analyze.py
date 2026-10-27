@@ -627,6 +627,42 @@ def plot_nodes_comparison(summary_20n: pd.DataFrame, summary_10n: pd.DataFrame, 
     return paths
 
 
+def plot_aggregate_comparison(summary: pd.DataFrame, speed: float, figures_dir: Path,
+                               tag: str) -> list[Path]:
+    """
+    Gráfico comparativo agregado (5º gráfico obrigatório): grade 2x2 com um
+    gráfico de barras por métrica (PDR, throughput, atraso, jitter), cada um
+    comparando os 3 protocolos numa única condição de mobilidade (`speed`).
+    Diferente de plot_metric/boxplot_metric (que mostram a métrica ao longo
+    de todas as velocidades), este isola uma condição específica para leitura
+    rápida de "quem ganha em quê" naquele ponto.
+    """
+    fig, axes = plt.subplots(1, 4, figsize=(13, 2.5))
+    for ax, (metric, (ylabel, title, suffix)) in zip(axes.flat, METRICS.items()):
+        sub = summary[np.isclose(summary["speed"], speed)].set_index("protocol")
+        ys = [sub.loc[p, f"{metric}_mean"] if p in sub.index else np.nan for p in PROTOCOLS]
+        errs = [sub.loc[p, f"{metric}_ci_half"] if p in sub.index else 0.0 for p in PROTOCOLS]
+        bars = ax.bar(PROTOCOLS, ys, yerr=errs, capsize=4,
+                      color=[COLORS[p] for p in PROTOCOLS])
+        ax.set_ylabel(ylabel, fontsize=9)
+        ax.set_title(title, fontsize=9)
+        if metric == "pdrPct":
+            ax.set_ylim(0, 100)
+        else:
+            ax.set_ylim(bottom=0)
+        ax.bar_label(bars, fmt="%.1f", padding=3, fontsize=7)
+
+    fig.tight_layout()
+
+    paths = []
+    for ext in ("png", "pdf"):
+        p = figures_dir / f"aggregate_comparison_{tag}.{ext}"
+        fig.savefig(p, bbox_inches="tight")
+        paths.append(p)
+    plt.close(fig)
+    return paths
+
+
 # ------------------------------------------------------------------------------
 def run_pipeline(raw_path: Path, tag: str, label: str, processed_dir: Path, figures_dir: Path,
                   errorbars: str, force: bool) -> tuple[pd.DataFrame, pd.DataFrame] | None:
@@ -693,6 +729,10 @@ def run_pipeline(raw_path: Path, tag: str, label: str, processed_dir: Path, figu
     print(f"\nGerando boxplots de dispersão ({label})...")
     for m in METRICS:
         print(f"  -> {boxplot_metric(per_run, m, figures_dir, tag, tests)}")
+
+    print(f"\nGerando 5º gráfico obrigatório (comparação agregada a 20 m/s, {label})...")
+    for p in plot_aggregate_comparison(summary, 20.0, figures_dir, tag):
+        print(f"  -> {p}")
 
     return per_run, summary
 

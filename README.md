@@ -47,10 +47,10 @@ O ns-3 é instalado **fora** deste repositório (ex.: `~/ns-3-allinone`). Preenc
 
 | Item | Comando | Valor usado |
 |---|---|---|
-| Versão do ns-3 | `cd $NS3_DIR && ./ns3 --version` | _preencher_ |
-| Sistema operacional | `lsb_release -a` | _preencher_ |
-| Compilador | `g++ --version` | _preencher_ |
-| Python | `python3 --version` | _preencher_ |
+| Versão do ns-3 | `cd $NS3_DIR && ./ns3 --version` | ns-3.48 |
+| Sistema operacional | `lsb_release -a` | Ubuntu 24.04 (em container Docker/WSL2 — setup específico da máquina usada para rodar as simulações, sem dual boot) |
+| Compilador | `g++ --version` | g++ padrão do Ubuntu 24.04 (versão exata não registrada neste momento; confira com o comando ao lado antes da entrega) |
+| Python | `python3 --version` | 3.12 |
 
 Dependências Python: `pandas`, `numpy`, `matplotlib` (opcional: `scipy`, para o IC exato; sem ele o script usa uma tabela de t de Student para 95%).
 
@@ -72,8 +72,13 @@ manet-ns3/
 │   ├── raw/                    # resultados_20n.csv, resultados_10n.csv, log.txt, flowmon/
 │   │   └── flowmon/             # amostra de XML do FlowMonitor (1 por protocolo×velocidade×estágio)
 │   └── processed/              # per_run_<tag>.csv, summary_<tag>.csv, validation_report_<tag>.txt
-├── figures/                    # 4 gráficos obrigatórios + boxplots por estágio, + 4 de comparação 20n/10n
-└── article/                    # artigo SBC
+├── figures/                    # 5 gráficos obrigatórios + boxplots por estágio, + 4 de comparação 20n/10n
+└── article/                    # artigo em formato SBC
+    ├── artigo.tex               # fonte LaTeX (5 páginas, modelo SBC)
+    ├── artigo.pdf               # PDF compilado, com o link do repositório destacado
+    ├── referencias.bib          # bibliografia (bibtex)
+    ├── sbc-template.sty, sbc.bst, caption2.sty  # arquivos oficiais do template SBC
+    └── documentacao-tecnica.md  # versão estendida, sem limite de páginas, com mais detalhes técnicos
 ```
 
 ## 4. Compilar e rodar a simulação completa (base + extensão)
@@ -184,6 +189,7 @@ Por estágio (`<tag>` = `20n` ou `10n`):
 | `figures/throughput_vs_speed_<tag>.{png,pdf}` | **Gráfico 2** — throughput × velocidade |
 | `figures/delay_vs_speed_<tag>.{png,pdf}` | **Gráfico 3** — atraso médio × velocidade |
 | `figures/jitter_vs_speed_<tag>.{png,pdf}` | **Gráfico 4** — jitter médio × velocidade |
+| `figures/aggregate_comparison_<tag>.{png,pdf}` | **Gráfico 5** — comparação agregada entre AODV/OLSR/DSDV nas 4 métricas, numa condição de mobilidade fixa (20 m/s, justificada no artigo por ser onde as diferenças entre protocolos são mais pronunciadas) |
 | `figures/boxplot_<metrica>_<tag>.png` | dispersão das 60 repetições (suplementar) |
 
 Comparação entre estágios (só gerada se os dois CSVs existirem e passarem na validação):
@@ -225,7 +231,7 @@ O enunciado pede uma terceira variável experimental além de protocolo e veloci
 
 **Como rodar:** `bash scripts/run_batch.sh` já roda os dois estágios em sequência (não há como rodar só um dos dois sem editar o `.cc` — ver Seção 4.1). **Como analisar:** `python3 scripts/analyze.py` já processa os dois CSVs e, se ambos existirem e passarem na validação, gera automaticamente 4 gráficos comparando 20 vs 10 nós (Seção 5.4).
 
-**Hipótese:** com menos nós na mesma área, a rede fica menos densa — menos vizinhos por nó, rotas mais longas (mais saltos) ou até partições da rede em subgrupos desconectados. Espera-se que isso afete PDR e delay de forma diferente conforme a estratégia de cada protocolo (reativo vs proativo, Seção 1) — essa comparação é o que os gráficos `*_nodes_comparison.*` (Seção 5.4) permitem visualizar, e deve ser discutida no artigo (`article/`, ver nota ao final da Seção 9).
+**Hipótese:** com menos nós na mesma área, a rede fica menos densa — menos vizinhos por nó, rotas mais longas (mais saltos) ou até partições da rede em subgrupos desconectados. Espera-se que isso afete PDR e delay de forma diferente conforme a estratégia de cada protocolo (reativo vs proativo, Seção 1) — essa comparação é o que os gráficos `*_nodes_comparison.*` (Seção 5.4) permitem visualizar, e é discutida no artigo (`article/artigo.tex`, ver nota ao final da Seção 9).
 
 ## 8. Solução de problemas
 
@@ -314,7 +320,7 @@ git rev-parse HEAD      # copie esse hash para a Seção 6.2
 
 Clone o repositório em um diretório **novo** (fora deste) e repita os passos 9.1 a 9.8 do zero, sem nenhum ajuste além de `NS3_DIR` e `<VERSAO>`. Se os 4 gráficos obrigatórios de cada estágio (20n e 10n) e os 4 gráficos de comparação saírem sem erro de validação, a reprodução funcionou — esse é o critério do enunciado para considerar o trabalho reproduzível.
 
-> **Nota:** a pasta `article/` ainda não existe neste repositório — o artigo em SBC (até 5 páginas), com o link do repositório destacado no corpo do texto, ainda precisa ser escrito e adicionado antes da entrega (15/out).
+> **Nota:** o artigo em SBC (5 páginas), com o link do repositório destacado ao final da Metodologia, já está em `article/artigo.tex` / `article/artigo.pdf`.
 
 ## 10. Referências
 
