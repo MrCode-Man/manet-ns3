@@ -47,7 +47,7 @@
 \maketitle
 
 \begin{resumo}
-Trabalhos sobre MANETs costumam enquadrar a comparação de protocolos em torno da dicotomia reativo/proativo, tratando a densidade de nós como fator secundário. Apresentamos um estudo em ns-3 de AODV, OLSR e DSDV sob quatro velocidades de mobilidade (1--20~m/s) \emph{e} duas densidades de nós (20 e 10, na mesma área), com 60 repetições independentes por cenário e testes de hipótese não paramétricos (Kruskal-Wallis; Mann-Whitney com correção de Holm). O AODV empata com o OLSR em taxa de entrega (PDR), mas tem atraso e jitter significativamente maiores; ambos superam o DSDV em PDR. Mais surpreendente: reduzir a densidade pela metade \emph{melhora} significativamente o PDR do DSDV (seus broadcasts periódicos da tabela completa escalam com o número de nós) e \emph{piora} o atraso e o jitter do AODV (mais sobrecarga de descoberta de rota sob demanda por vizinho) -- a densidade prejudica ou beneficia cada protocolo por um mecanismo diferente, não uniformemente. Uma correção de reprodutibilidade nos fluxos de números aleatórios do simulador também é reportada.
+Trabalhos sobre MANETs costumam enquadrar a comparação de protocolos em torno da dicotomia reativo/proativo, tratando a densidade de nós como fator secundário. Apresentamos um estudo em ns-3 de AODV, OLSR e DSDV sob quatro velocidades de mobilidade (1--20~m/s) \emph{e} duas densidades de nós (20 e 10, na mesma área), com 60 repetições independentes por cenário e testes de hipótese não paramétricos (Kruskal-Wallis; Mann-Whitney com correção de Holm). O AODV empata com o OLSR em taxa de entrega (PDR), mas tem atraso e jitter significativamente maiores; ambos superam o DSDV em PDR. Mais surpreendente: reduzir a densidade pela metade \emph{melhora} significativamente o PDR do DSDV (seus broadcasts periódicos da tabela completa escalam com o número de nós) e \emph{piora} o atraso e o jitter do AODV (mais sobrecarga de descoberta de rota sob demanda por vizinho) -- a densidade prejudica ou beneficia cada protocolo por um mecanismo diferente, não uniformemente.
 \end{resumo}
 
 \noindent\textbf{Palavras-chave:} MANET, roteamento \textit{ad hoc}, mobilidade, AODV, OLSR, DSDV, ns-3.
@@ -58,7 +58,7 @@ Em comparações de protocolos de roteamento para MANET, é comum partir da expe
 
 Para responder, comparamos os três protocolos em ns-3 sob quatro velocidades e duas densidades (20 e 10 nós, mesma área), validando as diferenças com testes não paramétricos.
 
-Contribuições: (i) comparação experimental de AODV, OLSR e DSDV sob mobilidade variável, com validação estatística par-a-par; (ii) análise do efeito da densidade em cada protocolo, não uniforme nem sempre prejudicial, com explicação mecanística; e (iii) a correção de um problema de reprodutibilidade dos números pseudoaleatórios do simulador.
+Contribuições: (i) comparação experimental de AODV, OLSR e DSDV sob mobilidade variável, com validação estatística par-a-par; (ii) análise do efeito da densidade em cada protocolo, não uniforme nem sempre prejudicial, com explicação mecanística.
 
 \section{Trabalhos Relacionados}
 
@@ -70,7 +70,7 @@ O cenário foi simulado no ns-3 (versão 3.48) \cite{nsnam2024} com rede 802.11b
 
 Cada combinação de protocolo, velocidade e densidade foi repetida 60 vezes, com seed mestre fixa e \textit{run} variável -- o ns-3 salta entre substreams independentes do gerador MRG32k3a, garantindo repetições independentes e reprodutíveis -- 1440 execuções no total. As métricas -- PDR, throughput, atraso e jitter médios -- vêm do FlowMonitor do ns-3, agregadas por execução; atraso e jitter só contam pacotes recebidos, limitação retomada na Seção~\ref{sec:discussao}. Como essas duas têm cauda longa (Shapiro-Wilk por célula), usamos testes não paramétricos: Kruskal-Wallis entre os 3 protocolos por velocidade, e Mann-Whitney par-a-par -- entre protocolos, e entre as duas densidades por protocolo/velocidade --, com correção de Holm e tamanho de efeito pelo delta de Cliff. Médias e IC95\% são só resumo descritivo.
 
-\textbf{Nota de reprodutibilidade.} Wi-Fi e roteamento não tinham fluxos pseudoaleatórios atribuídos via \texttt{AssignStreams}, ao contrário da mobilidade; como o contador global do ns-3 nunca era reiniciado entre as 1440 execuções, cada resultado dependia de quantas execuções vieram antes. Corrigido com \texttt{AssignStreams} explícito para Wi-Fi/roteamento mais \texttt{ResetNextStreamIndex()} por execução (o primeiro sozinho não bastava); os resultados aqui já refletem a correção. \textbf{Reprodutibilidade:} código, scripts de análise/gráficos, dados brutos e instruções completas de execução estão em \url{https://github.com/MrCode-Man/manet-ns3}.
+\textbf{Reprodutibilidade:} código, scripts de análise/gráficos, dados brutos e instruções completas de execução estão em \url{https://github.com/MrCode-Man/manet-ns3}.
 
 \section{Resultados}
 
@@ -106,12 +106,12 @@ DSDV & 20 & 43,6 & 57,0 & 5,9  & 6,3  & 2,8 & 3,0 \\
 \vspace{-9mm}
 \begin{figure}[H]
 \centering
-\includegraphics[width=.47\linewidth]{../figures/pdr_nodes_comparison.png}
+\includegraphics[width=.495\linewidth]{../figures/pdr_nodes_comparison.png}
 \hfill
-\includegraphics[width=.47\linewidth]{../figures/jitter_nodes_comparison.png}\\[1pt]
-\includegraphics[width=.47\linewidth]{../figures/delay_nodes_comparison.png}
+\includegraphics[width=.495\linewidth]{../figures/jitter_nodes_comparison.png}\\[1pt]
+\includegraphics[width=.495\linewidth]{../figures/delay_nodes_comparison.png}
 \hfill
-\includegraphics[width=.47\linewidth]{../figures/throughput_nodes_comparison.png}
+\includegraphics[width=.495\linewidth]{../figures/throughput_nodes_comparison.png}
 \caption{PDR, jitter, atraso e throughput: 20 nós (sólido) vs. 10 nós (tracejado).}
 \label{fig:pdr-jitter}
 \end{figure}
@@ -126,7 +126,7 @@ A Figura~\ref{fig:aggregate} agrega os três protocolos a 20~m/s.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=.8\linewidth]{../figures/aggregate_comparison_20n.png}
+\includegraphics[width=.95\linewidth]{../figures/aggregate_comparison_20n.png}
 \caption{Comparação agregada entre AODV, OLSR e DSDV a 20~m/s (20 nós).}
 \label{fig:aggregate}
 \end{figure}
@@ -171,7 +171,7 @@ Isso converge com \cite{alkhatib2018} (proativo igualando/superando reativos sob
 \vspace{3mm}
 \section{Conclusão}
 
-Com 60 repetições e testes não paramétricos, mostramos dois resultados que contestam suposições comuns: a superioridade do AODV sobre proativos não se sustenta em PDR contra o OLSR (só contra o DSDV); e reduzir a densidade de nós não prejudica a rede uniformemente -- melhora o DSDV, piora o AODV e quase não afeta o OLSR, cada um por um mecanismo diferente. Corrigimos ainda um problema de reprodutibilidade nos fluxos de números aleatórios do simulador. Trabalhos futuros: estender ao DSR e medir o overhead de controle por protocolo e densidade.
+Com 60 repetições e testes não paramétricos, mostramos dois resultados que contestam suposições comuns: a superioridade do AODV sobre proativos não se sustenta em PDR contra o OLSR (só contra o DSDV); e reduzir a densidade de nós não prejudica a rede uniformemente -- melhora o DSDV, piora o AODV e quase não afeta o OLSR, cada um por um mecanismo diferente. Trabalhos futuros: estender ao DSR e medir o overhead de controle por protocolo e densidade.
 
 \vspace{3mm}
 \bibliographystyle{sbc}
