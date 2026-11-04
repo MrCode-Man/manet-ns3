@@ -221,7 +221,7 @@ Os dados atuais em `data/raw/`, `data/processed/` e todas as figuras em `figures
 
 ### 6.2 Rastreabilidade
 
-**Commit da versão entregue:** `<HASH>` — hash (`git rev-parse HEAD`) do commit que corresponde exatamente ao código, dados e artigo enviados no Moodle, antes do prazo de 05/11. Como um commit não pode citar o próprio hash, esse valor foi obtido a partir do commit anterior a este (o commit com o conteúdo entregue) e registrado aqui num segundo commit, que altera só esta linha — ver Seção 9.8.
+**Commit da versão entregue:** `7127b4d593be91afdaa85b62a59a89f8a9fd2ae8` — hash (`git rev-parse HEAD`) do commit que corresponde exatamente ao código, dados e artigo enviados no Moodle, antes do prazo de 05/11. Como um commit não pode citar o próprio hash, esse valor foi obtido a partir do commit anterior a este (o commit com o conteúdo entregue) e registrado aqui num segundo commit, que altera só esta linha — ver Seção 9.8.
 
 ## 7. Extensão: número de nós (20 vs 10)
 
