@@ -48,8 +48,8 @@ O ns-3 é instalado **fora** deste repositório (ex.: `~/ns-3-allinone`). Preenc
 | Item | Comando | Valor usado |
 |---|---|---|
 | Versão do ns-3 | `cd $NS3_DIR && ./ns3 --version` | ns-3.48 |
-| Sistema operacional | `lsb_release -a` | Ubuntu 24.04 (em container Docker/WSL2 — setup específico da máquina usada para rodar as simulações, sem dual boot) |
-| Compilador | `g++ --version` | g++ padrão do Ubuntu 24.04 (versão exata não registrada neste momento; confira com o comando ao lado antes da entrega) |
+| Sistema operacional | `lsb_release -a` | Ubuntu 24.04 |
+| Compilador | `g++ --version` | g++ padrão do Ubuntu 24.04 |
 | Python | `python3 --version` | 3.12 |
 
 Dependências Python: `pandas`, `numpy`, `matplotlib` (opcional: `scipy`, para o IC exato; sem ele o script usa uma tabela de t de Student para 95%).
@@ -221,7 +221,7 @@ Os dados atuais em `data/raw/`, `data/processed/` e todas as figuras em `figures
 
 ### 6.2 Rastreabilidade
 
-**Commit da versão entregue:** _preencher ao fazer o commit final, antes do envio de 15/out_ — registre aqui o hash (`git rev-parse HEAD`) do commit que corresponde exatamente ao código, dados e artigo enviados no Moodle.
+**Commit da versão entregue:** `<HASH>` — hash (`git rev-parse HEAD`) do commit que corresponde exatamente ao código, dados e artigo enviados no Moodle, antes do prazo de 05/11. Como um commit não pode citar o próprio hash, esse valor foi obtido a partir do commit anterior a este (o commit com o conteúdo entregue) e registrado aqui num segundo commit, que altera só esta linha — ver Seção 9.8.
 
 ## 7. Extensão: número de nós (20 vs 10)
 
@@ -308,12 +308,15 @@ Gera, para cada estágio, `data/processed/per_run_<tag>.csv`, `summary_<tag>.csv
 
 ### 9.8 Rastreabilidade
 
-Depois de confirmar que tudo rodou e os gráficos saíram sem erro de validação, faça o commit final (código + dados + artigo juntos) e registre o hash na Seção 6.2:
+Depois de confirmar que tudo rodou e os gráficos saíram sem erro de validação, faça o commit final (código + dados + artigo juntos) e registre o hash na Seção 6.2. Como esse commit não pode citar o próprio hash, isso é feito em dois passos — o commit com o conteúdo entregue, e depois um segundo commit só para registrar o hash do primeiro:
 
 ```bash
 git add -A
 git commit -m "versão entregue"
-git rev-parse HEAD      # copie esse hash para a Seção 6.2
+git rev-parse HEAD              # hash do commit entregue
+# cole esse hash na Seção 6.2, depois:
+git add README.md
+git commit -m "docs: registra hash de rastreabilidade do commit entregue"
 ```
 
 ### 9.9 Teste decisivo
