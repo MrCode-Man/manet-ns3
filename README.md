@@ -244,7 +244,7 @@ O enunciado pede uma terceira variável experimental além de protocolo e veloci
 
 ## 9. Tutorial de reprodução completa (do zero à rastreabilidade)
 
-Esta seção é o caminho único, em ordem, para reproduzir o experimento inteiro partindo de uma máquina sem nada instalado — a mesma sequência do checklist de reprodução do enunciado: ambiente → compilação → execução → parâmetros → aleatoriedade → saídas → análise → rastreabilidade. Cada passo tem o comando real; os detalhes e justificativas completas ficam nas seções já referenciadas, para não duplicar conteúdo.
+Esta seção é o caminho único, em ordem, para reproduzir o experimento inteiro partindo de uma máquina sem nada instalado — a mesma sequência do checklist de reprodução do enunciado: ambiente → compilação → execução → parâmetros → aleatoriedade → saídas → análise → rastreabilidade. Cada passo tem o comando real; os detalhes e justificativas completas ficam nas seções já referenciadas, para não duplicar conteúdo. O repositório deste trabalho está em https://github.com/MrCode-Man/manet-ns3 e a versão entregue (código + dados + artigo) é a do commit `7127b4d` (Seção 6.2) — os passos abaixo já foram executados sobre ela, com **ns-3.48**, Ubuntu 24.04 e Python 3.12 (Seção 2); repita-os para verificar a reprodutibilidade.
 
 ### 9.1 Instalar o ns-3 (ambiente)
 
@@ -255,27 +255,27 @@ sudo apt update
 sudo apt install -y g++ python3 cmake ninja-build git
 ```
 
-Baixe e compile o ns-3 (troque `<VERSAO>` pela versão que o grupo vai usar — confira a mais recente em https://www.nsnam.org/releases/):
+Baixe e compile o ns-3 na mesma versão usada para gerar os dados e o artigo deste repositório — **ns-3.48** (Seção 2; outras versões podem mudar comportamento do FlowMonitor, do RNG ou dos helpers de roteamento e não são garantidas reproduzir os mesmos números):
 
 ```bash
 cd ~
-wget https://www.nsnam.org/releases/ns-allinone-<VERSAO>.tar.bz2
-tar xjf ns-allinone-<VERSAO>.tar.bz2
-cd ns-allinone-<VERSAO>/ns-<VERSAO>
+wget https://www.nsnam.org/releases/ns-allinone-3.48.tar.bz2
+tar xjf ns-allinone-3.48.tar.bz2
+cd ns-allinone-3.48/ns-3.48
 ./ns3 configure --enable-examples --enable-tests
 ./ns3 build
 ./ns3 run hello-simulator      # confirma que a instalação funcionou
 ```
 
-Anote a versão do ns-3, o SO, o compilador e a versão do Python usados aqui — são exatamente os itens da tabela da Seção 2 (Ambiente), que deve ser preenchida com esses valores.
+Ambiente usado para gerar os dados e o artigo entregues (Seção 2): Ubuntu 24.04, g++ padrão do Ubuntu 24.04, Python 3.12. Não é obrigatório reproduzir exatamente o mesmo SO/compilador, mas use a mesma versão do ns-3 (3.48) e anote o que você usar na tabela da Seção 2.
 
 ### 9.2 Clonar este repositório
 
 ```bash
-git clone <URL deste repositório> manet-ns3
+git clone https://github.com/MrCode-Man/manet-ns3.git
 cd manet-ns3
-export NS3_DIR=~/ns-allinone-<VERSAO>/ns-<VERSAO>   # pasta onde está o script ./ns3
-pip install pandas numpy matplotlib scipy            # dependências Python (Seção 2)
+export NS3_DIR=~/ns-allinone-3.48/ns-3.48   # pasta onde está o script ./ns3
+pip install pandas numpy matplotlib scipy   # dependências Python (Seção 2)
 ```
 
 ### 9.3 Compilar e rodar (compilação + execução)
